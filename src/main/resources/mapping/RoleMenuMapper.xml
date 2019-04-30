@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>   
+<!DOCTYPE mapper   
+PUBLIC "-//ibatis.apache.org//DTD Mapper 3.0//EN"  
+"http://ibatis.apache.org/dtd/ibatis-3-mapper.dtd"> 
+<mapper namespace="com.example.dao.RoleMenuMapper">
+	<resultMap id="roleMenuResultMap" type="com.example.dto.RoleMenu">
+		<id column="ROLE_ID" property="roleId"/>
+		<result column="MENU_ID" property="menuId"/>
+		<!-- <association property="menu" javaType="com.union.entity.Menu" resultMap="menuResultMap"></association>
+		<association property="role" javaType="com.union.entity.Role" resultMap="roleResultMap"></association> -->
+	</resultMap>
+	
+	<sql id="roleMenuColumns">
+		TCRMR.ROLE_ID AS ROLE_ID,
+		TCRMR.MENU_ID AS MENU_ID
+	</sql>
+
+</mapper> 

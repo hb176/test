@@ -1,0 +1,39 @@
+#默认使用配置
+spring:
+  profiles:
+    active: dev
+  session:
+    store-type: redis
+
+#公共配置与profiles选择无关
+#mybatis:
+#  typeAliasesPackage: com.example.dto
+#  mapperLocations: classpath:mapper/*.xml
+server:
+  port: 8080
+  session:
+    timeout: 1800
+  error:
+    path: /error.jsp
+logging:
+    level: debug
+
+---
+
+spring:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+       # show-sql: true
+              database: MYSQL
+                      redis:
+                        host: localhost
+                        password:
+                        port: 6379
+                        database: 0
+                      datasource:
+                        driver-class-name: com.mysql.jdbc.Driver
+                          url: jdbc:mysql://localhost:3306/demo
+                              username: root
+                              password: 123456
