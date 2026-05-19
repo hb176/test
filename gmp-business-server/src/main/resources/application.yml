@@ -1,0 +1,35 @@
+server:
+  port: 8007
+
+spring:
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  datasource:
+    druid:
+      url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/gmp_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      username: ${DB_USER:root}
+      password: ${DB_PASS:root}
+      driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      database: 5
+
+mybatis-plus:
+  type-aliases-package: com.gmp.business.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.gmp.business: DEBUG

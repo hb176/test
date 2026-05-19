@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gmp.workflow.mapper.FlowableTaskMapper">
+
+    <resultMap id="TaskVoMap" type="com.gmp.workflow.vo.flowable.task.TaskVo">
+        <id column="ID_" property="taskId" jdbcType="VARCHAR"/>
+        <result column="NAME_" property="name" jdbcType="VARCHAR"/>
+        <result column="ASSIGNEE_" property="assignee" jdbcType="VARCHAR"/>
+        <result column="PROC_INST_ID_" property="processInstanceId" jdbcType="VARCHAR"/>
+        <result column="PROC_DEF_ID_" property="processDefinitionId" jdbcType="VARCHAR"/>
+        <result column="BUSINESS_KEY_" property="businessKey" jdbcType="VARCHAR"/>
+        <result column="PARENT_ID_" property="parentId" jdbcType="VARCHAR"/>
+        <result column="TASK_DEF_KEY_" property="taskDefKey" jdbcType="VARCHAR"/>
+        <result column="CATEGORY_" property="taskType" jdbcType="VARCHAR"/>
+        <result column="FORM_NAME_" property="formName" jdbcType="VARCHAR"/>
+        <result column="START_USER_ID_" property="startPersonCode" jdbcType="VARCHAR"/>
+        <result column="start_person" property="startPersonName" jdbcType="VARCHAR"/>
+        <result column="process_status" property="processStatus" jdbcType="VARCHAR"/>
+        <result column="app_name" property="appName" jdbcType="VARCHAR"/>
+        <result column="START_TIME_" property="startTime" jdbcType="TIMESTAMP"/>
+        <result column="CREATE_TIME_" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="END_TIME_" property="endTime" jdbcType="TIMESTAMP"/>
+        <result column="TASK_END_TIME_" property="finishedTime" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 待办任务计数 -->
+    <select id="getAppingTaskCont" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT t1.ID_)
+        FROM act_ru_task t1
+        INNER JOIN act_ru_execution t2 ON t1.PROC_INST_ID_ = t2.PROC_INST_ID_
+        LEFT JOIN act_ru_identitylink t3 ON t3.TASK_ID_ = t1.ID_
+        WHERE t2.BUSINESS_KEY_ IS NOT NULL
+        <if test="params.appSn != null and params.appSn != ''">
+            AND t1.TENANT_ID_ = #{params.appSn, jdbcType=VARCHAR}
+        </if>
+        <if test="params.keyword != null and params.keyword != ''">
+            AND t2.NAME_ LIKE CONCAT('%', #{params.keyword}, '%')
+        </if>
+        <if test="params.userCode != null and params.userCode != ''">
+            AND (t1.ASSIGNEE_ = #{params.userCode}
+                OR t3.USER_ID_ = #{params.userCode}
+                OR t3.GROUP_ID_ IN (
+                    SELECT g.GROUP_ID_ FROM act_id_membership g
+                    WHERE g.USER_ID_ = #{params.userCode}))
+        </if>
+    </select>
+
+    <!-- 待办任务分页 -->
+    <select id="getAppingTasksPagerModel" resultMap="TaskVoMap">
+        SELECT DISTINCT
+            t1.ID_, t1.NAME_, t1.CREATE_TIME_, t1.ASSIGNEE_,
+            t1.TASK_DEF_KEY_, t1.CATEGORY_,
+            t2.BUSINESS_KEY_, t2.PROC_INST_ID_, t2.PARENT_ID_, t2.PROC_DEF_ID_,
+            t2.NAME_ AS FORM_NAME_, t2.START_TIME_, t2.START_USER_ID_
+        FROM act_ru_task t1
+        INNER JOIN act_ru_execution t2 ON t1.PROC_INST_ID_ = t2.PROC_INST_ID_
+        LEFT JOIN act_ru_identitylink t3 ON t3.TASK_ID_ = t1.ID_
+        WHERE t2.BUSINESS_KEY_ IS NOT NULL
+        <if test="params.appSn != null and params.appSn != ''">
+            AND t1.TENANT_ID_ = #{params.appSn, jdbcType=VARCHAR}
+        </if>
+        <if test="params.keyword != null and params.keyword != ''">
+            AND t2.NAME_ LIKE CONCAT('%', #{params.keyword}, '%')
+        </if>
+        <if test="params.userCode != null and params.userCode != ''">
+            AND (t1.ASSIGNEE_ = #{params.userCode}
+                OR t3.USER_ID_ = #{params.userCode}
+                OR t3.GROUP_ID_ IN (
+                    SELECT g.GROUP_ID_ FROM act_id_membership g
+                    WHERE g.USER_ID_ = #{params.userCode}))
+        </if>
+        ORDER BY t1.CREATE_TIME_ ASC
+    </select>
+
+    <!-- 已办任务分页 -->
+    <select id="getApplyedTasksPagerModel" resultMap="TaskVoMap">
+        SELECT DISTINCT
+            t1.ID_, t1.NAME_, t1.ASSIGNEE_, t1.TASK_DEF_KEY_,
+            t1.START_TIME_ AS CREATE_TIME_, t1.END_TIME_ AS TASK_END_TIME_,
+            t2.BUSINESS_KEY_, t2.PROC_INST_ID_, t2.PROC_DEF_ID_,
+            t2.NAME_ AS FORM_NAME_, t2.START_TIME_, t2.END_TIME_, t2.START_USER_ID_
+        FROM act_hi_taskinst t1
+        INNER JOIN act_hi_procinst t2 ON t1.PROC_INST_ID_ = t2.PROC_INST_ID_
+        LEFT JOIN act_hi_identitylink t3 ON t3.TASK_ID_ = t1.ID_
+        WHERE t2.BUSINESS_KEY_ IS NOT NULL
+        <if test="params.appSn != null and params.appSn != ''">
+            AND t1.TENANT_ID_ = #{params.appSn, jdbcType=VARCHAR}
+        </if>
+        <if test="params.keyword != null and params.keyword != ''">
+            AND t2.NAME_ LIKE CONCAT('%', #{params.keyword}, '%')
+        </if>
+        <if test="params.userCode != null and params.userCode != ''">
+            AND (t1.ASSIGNEE_ = #{params.userCode}
+                OR ((t1.ASSIGNEE_ IS NULL OR t1.ASSIGNEE_ = '')
+                AND (t3.USER_ID_ = #{params.userCode}
+                    OR t3.GROUP_ID_ IN (
+                        SELECT g.GROUP_ID_ FROM act_id_membership g
+                        WHERE g.USER_ID_ = #{params.userCode}))))
+        </if>
+        ORDER BY t1.START_TIME_ DESC
+    </select>
+
+    <!-- 更新历史任务审批人 -->
+    <update id="updateHisAssignee">
+        UPDATE act_hi_taskinst SET ASSIGNEE_ = #{assignee, jdbcType=VARCHAR}
+        WHERE ID_ = #{taskId, jdbcType=VARCHAR}
+    </update>
+
+</mapper>

@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: gmp-auth
+  cloud:
+    nacos:
+      config:
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+      discovery:
+        server-addr: ${NACOS_SERVER:localhost:8848}
+        group: GMP_GROUP
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+    compatibility-verifier:
+      enabled: false

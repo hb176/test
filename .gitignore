@@ -1,0 +1,57 @@
+# ============================================================
+# GMP系统 Git忽略文件配置
+# ============================================================
+
+# Maven
+target/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# 日志文件
+logs/
+*.log
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# 环境配置（敏感信息）
+.env.local
+application-local.yml
+*-local.yml
+
+# 操作系统
+Desktop.ini
+$RECYCLE.BIN/
+
+# 编译输出
+build/
+dist/
+
+# Claude 配置
+.claude/
+
+# 外部参考项目（不上传）
+_temp_lwj_flow/

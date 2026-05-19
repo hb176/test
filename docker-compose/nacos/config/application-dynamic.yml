@@ -1,0 +1,60 @@
+# ================================================================
+# GMP系统 - Nacos共享配置 (application-dynamic.yml)
+# 运行时动态配置，支持热刷新（@RefreshScope）
+# 包含：JWT密钥、Redis连接、安全策略、通知配置等
+# ================================================================
+
+# JWT安全配置
+gmp:
+  jwt:
+    # JWT签名密钥（生产环境必须修改为强密钥，至少256位）
+    secret: "Gmp-Prod-Secret-2026!@#JWT-HMAC-SHA256-KEY-Min-256-Bits-Length"
+    # Access Token有效期（秒），默认24小时
+    access-token-expire: 86400
+    # Refresh Token有效期（秒），默认7天
+    refresh-token-expire: 604800
+
+  # 安全策略
+  security:
+    # 密码最小长度
+    password-min-length: 8
+    # 密码最大错误次数（超过后锁定）
+    password-max-retry: 5
+    # 密码错误锁定时间（分钟）
+    password-lock-minutes: 30
+    # 登录验证码开关
+    captcha-enabled: true
+
+  # 文件存储配置
+  storage:
+    # 存储类型: local/minio/fastdfs
+    type: local
+    # 本地存储路径
+    local-path: /tmp/gmp/files/
+    # MinIO配置（type=minio时生效）
+    minio:
+      endpoint: http://localhost:9000
+      access-key: gmp_admin
+      secret-key: GmpMinio@2026!Storage
+      bucket: gmp-files
+
+  # 通知配置
+  notification:
+    # 邮件配置
+    email:
+      host: smtp.example.com
+      port: 465
+      username: gmp_notify@company.com
+      password: "GmpEmail@2026!Notify"
+      from: "GMP系统 <gmp_notify@company.com>"
+    # 企业内部通知（飞书/钉钉/企业微信）
+    lark:
+      app-id: ""
+      app-secret: ""
+
+  # 数据同步
+  datasource:
+    # 多租户数据源配置（运行时动态添加）
+    dynamic:
+      # 是否启用多租户
+      enabled: false

@@ -1,0 +1,21 @@
+spring:
+  application:
+    # 必须写！服务名，Nacos注册用
+    name: gmp-file-server
+  cloud:
+    # Nacos 服务注册配置
+    nacos:
+      config:
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+      discovery:
+        server-addr: ${NACOS_SERVER:localhost:8848}
+        group: GMP_GROUP
+        # 必须加！Nacos账号密码
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        # 开启注册（默认true，写上更保险）
+        register-enabled: true
+    # 关闭版本校验（避免报错）
+    compatibility-verifier:
+      enabled: false

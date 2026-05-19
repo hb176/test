@@ -1,0 +1,389 @@
+# ================================================================
+# GMP系统 - Docker Compose编排配置
+# 分布式微服务架构：Nacos注册中心 + Gateway网关 + 多微服务 + 中间件
+#
+# 启动方式: docker-compose up -d
+# 停止方式: docker-compose down
+# 查看日志: docker-compose logs -f [service-name]
+#
+# 服务端口规划：
+#   8000: gmp-gateway (API网关)
+#   8001: gmp-auth (认证授权)
+#   8003: gmp-system-server (系统管理)
+#   8004: gmp-form-server (表单服务)
+#   8005: gmp-workflow-server (流程服务)
+#   8006: gmp-file-server (文件服务-MinIO)
+#   8007: gmp-business-server (业务服务-QMS/DMS/TMS/QRS)
+#   8848: nacos (注册中心+配置中心)
+#   9000: minio (对象存储API)
+#   9001: minio (对象存储控制台)
+#   3306: mysql (数据库)
+#   6379: redis (缓存)
+#   5672: rabbitmq (消息队列)
+#   15672: rabbitmq管理界面
+# ================================================================
+version: '3.8'
+
+services:
+
+  # ==================== 基础设施 ====================
+
+  # MySQL 8.0 数据库
+  mysql:
+    image: mysql:8.0.37
+    container_name: gmp-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: gmp_system
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+      TZ: Asia/Shanghai
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d  # 初始化SQL脚本
+    command:
+      - --default-time-zone=+08:00
+      - --max_connections=1000
+      - --innodb_buffer_pool_size=512M
+    networks:
+      - gmp-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 7 缓存
+  redis:
+    image: redis:7.4-alpine
+    container_name: gmp-redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123} --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - gmp-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nacos 注册中心 + 配置中心
+  nacos:
+    image: nacos/nacos-server:v2.4.0
+    container_name: gmp-nacos
+    restart: always
+    environment:
+      - MODE=standalone
+      - PREFER_HOST_MODE=hostname
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=mysql
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_DB_NAME=nacos_config
+      - MYSQL_SERVICE_USER=root
+      - MYSQL_SERVICE_PASSWORD=${DB_ROOT_PASSWORD:-root123}
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_IDENTITY_KEY=nacos
+      - NACOS_AUTH_IDENTITY_VALUE=nacos
+      - NACOS_AUTH_TOKEN=SecretKey012345678901234567890123456789012345678901234567890123456789
+    ports:
+      - "8848:8848"
+      - "9848:9848"   # gRPC端口
+      - "9849:9849"   # gRPC端口
+    volumes:
+      - nacos-logs:/home/nacos/logs
+      - ./nacos/init/custom.properties:/home/nacos/init.d/custom.properties
+    networks:
+      - gmp-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # RabbitMQ 消息队列
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: gmp-rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-gmp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-gmp123}
+    ports:
+      - "5672:5672"     # AMQP端口
+      - "15672:15672"   # 管理界面端口
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - gmp-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO 对象存储 (文件管理服务)
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: gmp-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      TZ: Asia/Shanghai
+    ports:
+      - "9000:9000"     # API端口
+      - "9001:9001"     # Web控制台端口
+    volumes:
+      - minio-data:/data
+    networks:
+      - gmp-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==================== GMP微服务 ====================
+
+  # API网关 (端口8000)
+  gmp-gateway:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-gateway
+    container_name: gmp-gateway
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8000:8000"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 认证授权服务 (端口8001)
+  gmp-auth:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-auth
+    container_name: gmp-auth
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8001:8001"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  # 系统管理服务 (端口8003)
+  gmp-system-server:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-system-server
+    container_name: gmp-system-server
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8003:8003"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  # 表单管理服务 (端口8004)
+  gmp-form-server:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-form-server
+    container_name: gmp-form-server
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8004:8004"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  # 流程管理服务 (端口8005)
+  gmp-workflow-server:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-workflow-server
+    container_name: gmp-workflow-server
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8005:8005"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  # 文件管理服务 (端口8006) - MinIO对象存储
+  gmp-file-server:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-file-server
+    container_name: gmp-file-server
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8006:8006"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # 业务模块服务 (端口8007) - QMS/DMS/TMS/QRS
+  gmp-business-server:
+    build:
+      context: ..
+      dockerfile: docker-compose/Dockerfile
+      args:
+        MODULE: gmp-business-server
+    container_name: gmp-business-server
+    restart: always
+    environment:
+      - NACOS_SERVER=nacos:8848
+      - NACOS_NAMESPACE=gmp-dev
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=${DB_ROOT_PASSWORD:-root123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    ports:
+      - "8007:8007"
+    networks:
+      - gmp-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+# ==================== 网络与存储卷 ====================
+
+networks:
+  gmp-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+  rabbitmq-data:
+    driver: local
+  minio-data:
+    driver: local
+  nacos-logs:
+    driver: local

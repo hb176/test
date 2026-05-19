@@ -1,0 +1,106 @@
+# ================================================================
+# GMP系统 - Nacos共享配置 (application-comm.yml)
+# 所有微服务启动时从Nacos加载此共享配置
+# 包含：公共数据源、连接池、序列化、文件上传、Feign调用、日志等通用配置
+# ================================================================
+
+# Spring通用配置
+spring:
+  # Jackson JSON序列化配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  # 文件上传限制
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+
+  # 消息队列（RabbitMQ）
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    # 发布确认模式
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
+  # 启用的Profile
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+# Druid连接池默认配置（各服务可通过自己的application.yml覆盖）
+spring.datasource.druid:
+  initial-size: 5
+  min-idle: 10
+  max-active: 50
+  max-wait: 60000
+  time-between-eviction-runs-millis: 60000
+  min-evictable-idle-time-millis: 300000
+  test-while-idle: true
+  test-on-borrow: false
+  test-on-return: false
+  validation-query: SELECT 1
+  filters: stat,wall,slf4j
+  # Web Stat Filter
+  web-stat-filter:
+    enabled: true
+    url-pattern: /*
+    exclusions: "*.js,*.css,*.gif,*.jpg,*.png,*.ico,/druid/*,/actuator/*"
+
+# Feign配置（声明式HTTP客户端）
+feign:
+  hystrix:
+    enabled: true
+  client:
+    config:
+      default:
+        connect-timeout: 10000
+        read-timeout: 30000
+        logger-level: BASIC
+  # 启用压缩
+  compression:
+    request:
+      enabled: true
+      mime-types: text/xml,application/xml,application/json
+      min-request-size: 2048
+    response:
+      enabled: true
+
+# 断路器配置（Resilience4j 或 Sentinel）
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+
+# Actuator健康检查与监控
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+# 日志通用配置
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: /tmp/gmp/logs/${spring.application.name}.log
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 30

@@ -1,0 +1,1 @@
+ALTER TABLE sys_user ADD COLUMN dept_ids VARCHAR(500) NULL COMMENT '多部门ID(逗号分隔)';

@@ -1,0 +1,84 @@
+# ==========================================
+# GMP认证服务 - 应用配置
+# ==========================================
+server:
+  port: 8001
+
+spring:
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  # 数据库配置
+  datasource:
+    druid:
+      url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/gmp_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+      username: ${DB_USER:root}
+      password: ${DB_PASS:root}
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      # Druid连接池配置
+      initial-size: 5
+      min-idle: 10
+      max-active: 50
+      max-wait: 60000
+      # 连接检测
+      test-while-idle: true
+      test-on-borrow: false
+      test-on-return: false
+      validation-query: SELECT 1
+      # 连接池监控
+      stat-view-servlet:
+        enabled: true
+        url-pattern: /druid/*
+        login-username: admin
+        login-password: admin
+      # SQL防火墙
+      filters: stat,wall,slf4j
+
+  # Redis配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      database: 1
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+
+# GMP自定义配置
+gmp:
+  jwt:
+    access-token-expire: 1800  # Access Token有效期（秒），默认30分钟
+
+# MyBatis-Plus配置
+mybatis-plus:
+  # 实体类扫描包路径（多个用逗号分隔）
+  type-aliases-package: com.gmp.auth.entity,com.gmp.system.entity
+  # Mapper XML文件路径
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 全局配置
+  global-config:
+    db-config:
+      # 主键类型：ASSIGN_ID = 雪花算法自动生成
+      id-type: ASSIGN_ID
+      # 逻辑删除字段名
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  # 配置项
+  configuration:
+    # 下划线转驼峰（数据库字段名 -> Java属性名）
+    map-underscore-to-camel-case: true
+    # 日志输出
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    # 缓存
+    cache-enabled: true
+
+# 日志配置
+logging:
+  level:
+    com.gmp.auth: DEBUG
+    org.springframework.security: INFO

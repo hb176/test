@@ -1,0 +1,63 @@
+server:
+  port: 8005
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.flowable.spring.boot.FlowableSecurityAutoConfiguration
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  datasource:
+    druid:
+      url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/gmp_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+      username: ${DB_USER:root}
+      password: ${DB_PASS:root}
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      initial-size: 5
+      min-idle: 10
+      max-active: 50
+  cache:
+    type: simple
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      database: 3
+      timeout: 5000ms
+
+# 👇👇👇 新增这段 Redisson 配置（关键！）
+redisson:
+  single-server-config:
+    address: redis://${REDIS_HOST:localhost}:${REDIS_PORT:6379}
+    password: 123456
+    database: 3
+
+# Flowable工作流引擎配置
+flowable:
+  database-schema-update: true
+  async-executor-activate: true
+  async-executor:
+    core-pool-size: 8
+    max-pool-size: 16
+    queue-size: 200
+  history-level: audit
+
+mybatis-plus:
+  type-aliases-package: com.gmp.workflow.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    com.gmp.workflow: DEBUG
+    org.flowable: INFO

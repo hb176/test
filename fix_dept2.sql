@@ -1,0 +1,1 @@
+UPDATE sys_user SET dept_name=(SELECT dept_name FROM sys_dept WHERE id=CAST(SUBSTRING_INDEX(dept_ids,',',1) AS UNSIGNED)) WHERE dept_name IS NULL AND dept_ids IS NOT NULL

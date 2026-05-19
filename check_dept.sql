@@ -1,0 +1,1 @@
+SELECT COUNT(*) AS cnt FROM sys_dept; SHOW COLUMNS FROM sys_dept;

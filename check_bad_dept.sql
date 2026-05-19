@@ -1,0 +1,1 @@
+SELECT id, user_name, dept_id, dept_name, dept_ids FROM sys_user WHERE dept_name REGEXP '^[0-9]+$' OR dept_name IS NULL OR dept_name=''

@@ -1,0 +1,1 @@
+DELETE FROM sys_role WHERE id=2056261869449441282; INSERT INTO sys_role (id, deleted, create_time, create_by, update_time, update_by, version, role_code, role_name, description, role_level, status, is_system) VALUES (1, 0, NOW(), 1, NOW(), 1, 0, 'ROLE_ADMIN', '系统管理员', '拥有所有权限', 1, 1, 1); UPDATE sys_role SET role_code='ROLE_USER' WHERE id=2;

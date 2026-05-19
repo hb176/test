@@ -1,0 +1,1 @@
+SELECT id, role_code, role_name, status FROM sys_role; SELECT id, user_id, user_name FROM sys_user; SELECT COUNT(*) AS menu_count FROM sys_menu; SELECT COUNT(*) AS role_menu_count FROM sys_role_menu;

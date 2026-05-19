@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gmp.auth.mapper.SysUserMapper">
+
+    <resultMap id="BaseResultMap" type="com.gmp.auth.entity.SysUser">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="password" property="password"/>
+        <result column="salt" property="salt"/>
+        <result column="job_num" property="jobNum"/>
+        <result column="user_name" property="userName"/>
+        <result column="domain_id" property="domainId"/>
+        <result column="user_type" property="userType"/>
+        <result column="department_code" property="departmentCode"/>
+        <result column="dept_id" property="deptId"/>
+        <result column="dept_name" property="deptName"/>
+        <result column="phone" property="phone"/>
+        <result column="mail" property="mail"/>
+        <result column="wx_account" property="wxAccount"/>
+        <result column="ding_ding" property="dingDing"/>
+        <result column="api_account" property="apiAccount"/>
+        <result column="password_error_num" property="passwordErrorNum"/>
+        <result column="password_expire_time" property="passwordExpireTime"/>
+        <result column="subsidiaries_id" property="subsidiariesId"/>
+        <result column="subsidiaries_code" property="subsidiariesCode"/>
+        <result column="subsidiaries_name" property="subsidiariesName"/>
+        <result column="company_id" property="companyId"/>
+        <result column="company_code" property="companyCode"/>
+        <result column="company_name" property="companyName"/>
+        <result column="create_time" property="createTime"/>
+        <result column="head_portrait" property="headPortrait"/>
+        <result column="has_bloc" property="hasBloc"/>
+        <result column="status" property="status"/>
+        <result column="lock_time" property="lockTime"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_by" property="createBy"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="update_by" property="updateBy"/>
+        <result column="version" property="version"/>
+    </resultMap>
+
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE user_id = #{userId} AND deleted = 0
+    </select>
+
+</mapper>

@@ -1,0 +1,1 @@
+UPDATE sys_user SET dept_name = NULL WHERE dept_name IS NOT NULL AND dept_name NOT IN (SELECT dept_name FROM sys_dept); UPDATE sys_user u JOIN sys_dept d ON u.dept_id = d.id SET u.dept_name = d.dept_name WHERE u.dept_name IS NULL AND u.dept_id IS NOT NULL
