@@ -8,8 +8,9 @@ import com.gmp.business.service.impl.BusinessFacadeServiceImpl;
 import com.gmp.framework.base.CommonController;
 import com.gmp.framework.base.Result;
 import com.gmp.common.constant.BusinessType;
+import com.gmp.common.exceptions.BusinessException;
+import com.gmp.framework.workflow.WorkflowService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.gmp.business.entity.BusinessRecord;
 import com.gmp.framework.base.PageResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class TmsController extends CommonController<BusinessRecordService, Busin
 
     private final BusinessFacadeServiceImpl businessFacade;
     private final BusinessRecordService businessRecordService;
+    private final WorkflowService workflowService;
 
     @Override
     protected BusinessRecordService getService() {
@@ -91,6 +93,12 @@ public class TmsController extends CommonController<BusinessRecordService, Busin
         return Result.okMsg("更新成功");
     }
 
+    @PreAuthorize("hasAuthority('tms:course:edit')")
+    @PostMapping("/course/{id}/submit-review")
+    public Result<Void> submitCourseForReview(@PathVariable Long id) {
+        return doSubmitForReview(id, "TMS_COURSE");
+    }
+
     @PreAuthorize("hasAuthority('tms:course:delete')")
     @DeleteMapping("/course/{id}")
     public Result<Void> deleteCourse(@PathVariable Long id) {
@@ -123,6 +131,12 @@ public class TmsController extends CommonController<BusinessRecordService, Busin
         BusinessRecord r = businessRecordService.getById(id);
         return r != null ? Result.ok(BusinessRecordVO.fromEntity(r))
                 : Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "计划不存在");
+    }
+
+    @PreAuthorize("hasAuthority('tms:plan:edit')")
+    @PostMapping("/plan/{id}/submit-review")
+    public Result<Void> submitPlanForReview(@PathVariable Long id) {
+        return doSubmitForReview(id, "TMS_PLAN");
     }
 
     @PreAuthorize("hasAuthority('tms:plan:edit')")
@@ -233,5 +247,28 @@ public class TmsController extends CommonController<BusinessRecordService, Busin
         }
         w.orderByDesc(BusinessRecord::getCreateTime);
         return businessRecordService.pageQuery(pageNum, pageSize, w);
+    }
+
+    private Result<Void> doSubmitForReview(Long id, String processKey) {
+        BusinessRecord r = businessRecordService.getById(id);
+        if (r == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "记录不存在");
+        if (!"DRAFT".equals(r.getBusinessStatus())) {
+            return Result.fail(com.gmp.common.base.ResultCode.VALIDATION_FAILED, "仅草稿状态可提交审核");
+        }
+        try {
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("businessNo", r.getBusinessNo());
+            variables.put("title", r.getTitle());
+            variables.put("initiatorName", r.getInitiatorName());
+            org.flowable.engine.runtime.ProcessInstance pi = workflowService.startProcess(
+                    processKey, r.getBusinessNo(), variables, r.getInitiatorName());
+            r.setProcessInstanceId(pi.getId());
+            log.info("审批流程已启动: id={}, processInstanceId={}, key={}", id, pi.getId(), processKey);
+        } catch (BusinessException e) {
+            log.warn("流程启动失败（降级为手动审批）: key={}, error={}", processKey, e.getMessage());
+        }
+        r.setBusinessStatus("APPROVING");
+        businessRecordService.updateById(r);
+        return Result.okMsg("已提交审核");
     }
 }

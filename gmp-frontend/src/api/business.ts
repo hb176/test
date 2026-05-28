@@ -22,9 +22,11 @@ export function getVersionHistory(id: number) { return request.get(`/dms/documen
 export function getCoursePage(params: any) { return request.get('/tms/course/page', { params }) }
 export function getCourse(id: number) { return request.get(`/tms/course/${id}`) }
 export function createCourse(data: any) { return request.post('/tms/course', data) }
+export function submitCourseForReview(id: number) { return request.post(`/tms/course/${id}/submit-review`) }
 export function getPlanPage(params: any) { return request.get('/tms/plan/page', { params }) }
 export function getPlan(id: number) { return request.get(`/tms/plan/${id}`) }
 export function createTrainingPlan(data: any) { return request.post('/tms/plan', data) }
+export function submitPlanForReview(id: number) { return request.post(`/tms/plan/${id}/submit-review`) }
 export function getTrainingRecords(params: any) { return request.get('/tms/record/page', { params }) }
 export function createTrainingRecord(data: any) { return request.post('/tms/record', data) }
 export function evaluateTraining(id: number, data?: any) { return request.post(`/tms/record/${id}/evaluate`, data || {}) }

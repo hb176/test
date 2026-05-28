@@ -28,7 +28,11 @@ export function updateDept(id: number, data: any) { return request.put(`/system/
 export function deleteDept(id: number) { return request.delete(`/system/dept/${id}`) }
 
 // ========== 字典管理 ==========
+export function getDictPage(params: any) { return request.get('/system/dict/page', { params }) }
 export function getDictByCode(code: string) { return request.get(`/system/dict/${code}`) }
+export function createDict(data: any) { return request.post('/system/dict', data) }
+export function updateDict(data: any) { return request.put('/system/dict', data) }
+export function deleteDict(id: number) { return request.delete(`/system/dict/${id}`) }
 export function refreshDictCache() { return request.post('/system/dict/refresh-cache') }
 
 // ========== 系统配置 ==========

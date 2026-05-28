@@ -2,11 +2,14 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getTokenExpireConfig, updateTokenExpireConfig } from '@/api/auth'
-import { getConfigList, updatePasswordPolicy } from '@/api/system'
+import { getConfigList, getConfigListByCategory, updateConfig, updatePasswordPolicy } from '@/api/system'
 
 const activeTab = ref('token')
 const loading = ref(false)
 const saving = ref(false)
+
+// 站点配置
+const siteConfigs = ref<any[]>([])
 
 // Token 配置
 const expireMinutes = ref(30)
@@ -24,6 +27,27 @@ const levelDescriptions = {
   low: '仅要求数字',
   medium: '要求数字 + 英文字母',
   high: '要求数字 + 英文字母 + 特殊字符'
+}
+
+async function loadSiteConfigs() {
+  try {
+    const res = await getConfigListByCategory('system')
+    siteConfigs.value = res.data || []
+  } catch { /* */ }
+}
+
+async function handleSaveSiteConfigs() {
+  saving.value = true
+  try {
+    for (const c of siteConfigs.value) {
+      await updateConfig({ id: c.id, configKey: c.configKey, configValue: c.configValue, category: c.category })
+    }
+    ElMessage.success('站点配置已保存')
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function loadConfig() {
@@ -100,15 +124,29 @@ async function handleSavePassword() {
   }
 }
 
-onMounted(loadConfig)
+onMounted(() => { loadConfig(); loadSiteConfigs() })
 </script>
 
 <template>
   <div class="settings-page">
     <el-tabs v-model="activeTab">
+      <el-tab-pane label="站点配置" name="site" />
       <el-tab-pane label="登录配置" name="token" />
       <el-tab-pane label="密码策略" name="password" />
     </el-tabs>
+
+    <!-- 站点配置 -->
+    <el-card v-show="activeTab === 'site'" shadow="never" style="margin-top:16px">
+      <el-form label-width="160px" v-loading="loading">
+        <el-form-item v-for="c in siteConfigs" :key="c.id" :label="c.description || c.configKey">
+          <el-input v-model="c.configValue" :placeholder="c.description" />
+        </el-form-item>
+        <el-empty v-if="!siteConfigs.length && !loading" description="暂无站点配置项" />
+        <el-form-item v-if="siteConfigs.length">
+          <el-button type="primary" :loading="saving" @click="handleSaveSiteConfigs">保存</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
     <!-- Token 配置 -->
     <el-card v-show="activeTab === 'token'" shadow="never" style="margin-top:16px">

@@ -2,6 +2,7 @@ package com.gmp.workflow.listener;
 
 import com.gmp.workflow.enums.flowable.runtime.CommentTypeEnum;
 import com.gmp.workflow.enums.flowable.runtime.ProcessStatusEnum;
+import com.gmp.workflow.feign.BusinessFeignClient;
 import com.gmp.workflow.feign.SystemFeignClient;
 import com.gmp.workflow.model.flowable.CommentInfo;
 import com.gmp.workflow.model.flowable.ExtendHisprocinst;
@@ -39,6 +40,7 @@ public class GlobalProcistEndListener extends AbstractFlowableEngineEventListene
     private final HistoryService historyService;
     private final ICommentInfoService commentInfoService;
     private final SystemFeignClient systemFeignClient;
+    private final BusinessFeignClient businessFeignClient;
 
     /**
      * 流程实例结束事件处理
@@ -53,6 +55,7 @@ public class GlobalProcistEndListener extends AbstractFlowableEngineEventListene
         FlowableEntityEventImpl flowableEntityEvent = (FlowableEntityEventImpl) event;
         String processInstanceId = flowableEntityEvent.getProcessInstanceId();
         updateExtendInfoToHis(processInstanceId);
+        updateBusinessRecordStatus(processInstanceId);
         notifyProcessInitiator(processInstanceId);
     }
 
@@ -99,6 +102,32 @@ public class GlobalProcistEndListener extends AbstractFlowableEngineEventListene
         }
 
         log.info("流程实例结束处理完成: processInstanceId={}", processInstanceId);
+    }
+
+    /**
+     * 流程结束后更新业务记录状态
+     * 通过 businessKey（即 businessNo）找到业务记录并更新状态
+     */
+    private void updateBusinessRecordStatus(String processInstanceId) {
+        try {
+            HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId).singleResult();
+            if (hpi == null) return;
+
+            String businessKey = hpi.getBusinessKey();
+            if (businessKey == null || businessKey.isEmpty()) return;
+
+            // 判断审批结果：正常结束=COMPLETED，终止=REJECTED
+            String status = "COMPLETED";
+            if (hpi.getDeleteReason() != null && hpi.getDeleteReason().contains("reject")) {
+                status = "REJECTED";
+            }
+
+            businessFeignClient.updateStatusByBusinessNo(businessKey, status);
+            log.info("业务记录状态已更新: businessNo={}, status={}", businessKey, status);
+        } catch (Exception e) {
+            log.warn("更新业务记录状态失败: processInstanceId={}, error={}", processInstanceId, e.getMessage());
+        }
     }
 
     /**

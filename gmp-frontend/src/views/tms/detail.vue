@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCourse, getPlan, assignTraining, getAssignmentsByCourse, completeAssignment, getCourseStats } from '@/api/business'
+import { getCourse, getPlan, assignTraining, getAssignmentsByCourse, completeAssignment, getCourseStats, submitCourseForReview, submitPlanForReview } from '@/api/business'
 import { getUserPage } from '@/api/system'
 import { useRoute, useRouter } from 'vue-router'
 import FileUpload from '@/components/FileUpload.vue'
@@ -83,6 +83,19 @@ async function handleCompleteAssignment(assignmentId: number) {
   fetchStats()
 }
 
+async function handleSubmitForReview() {
+  try {
+    await ElMessageBox.confirm('确认提交审批？提交后将启动审批流程。', '提交审批', { type: 'info' })
+    if (type.value === 'course') {
+      await submitCourseForReview(id.value)
+    } else {
+      await submitPlanForReview(id.value)
+    }
+    ElMessage.success('已提交审批')
+    fetchData()
+  } catch { /* cancelled */ }
+}
+
 const progressPercent = computed(() => {
   if (!courseStats.value.total) return 0
   return Math.round((courseStats.value.completed / courseStats.value.total) * 100)
@@ -118,6 +131,7 @@ onMounted(fetchData)
         <el-tag v-if="item" :type="getTag(item.businessStatus).type" size="small" style="margin-left:12px">{{ getTag(item.businessStatus).text }}</el-tag>
       </div>
       <div class="header-actions">
+        <el-button v-if="item?.businessStatus === 'DRAFT'" type="success" @click="handleSubmitForReview">提交审批</el-button>
         <el-button v-if="type === 'course' && item?.businessStatus !== 'DRAFT'" type="primary" @click="openAssign">分配培训</el-button>
       </div>
     </el-card>

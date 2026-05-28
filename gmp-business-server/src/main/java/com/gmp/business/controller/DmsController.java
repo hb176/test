@@ -8,11 +8,13 @@ import com.gmp.business.service.impl.BusinessFacadeServiceImpl;
 import com.gmp.framework.base.CommonController;
 import com.gmp.framework.base.Result;
 import com.gmp.common.constant.BusinessType;
+import com.gmp.common.exceptions.BusinessException;
+import com.gmp.framework.workflow.WorkflowService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.gmp.business.entity.BusinessRecord;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,6 +35,7 @@ public class DmsController extends CommonController<BusinessRecordService, Busin
 
     private final BusinessFacadeServiceImpl businessFacade;
     private final BusinessRecordService businessRecordService;
+    private final WorkflowService workflowService;
 
     @Override
     protected BusinessRecordService getService() {
@@ -51,9 +54,26 @@ public class DmsController extends CommonController<BusinessRecordService, Busin
     public Result<Void> submitForReview(@PathVariable Long id) {
         BusinessRecord record = businessRecordService.getById(id);
         if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        if (!"DRAFT".equals(record.getBusinessStatus())) {
+            return Result.fail(com.gmp.common.base.ResultCode.VALIDATION_FAILED, "仅草稿状态可提交审核");
+        }
+
+        // 尝试启动工作流
+        try {
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("businessNo", record.getBusinessNo());
+            variables.put("title", record.getTitle());
+            variables.put("initiatorName", record.getInitiatorName());
+            ProcessInstance pi = workflowService.startProcess(
+                    "DMS_DOCUMENT", record.getBusinessNo(), variables, record.getInitiatorName());
+            record.setProcessInstanceId(pi.getId());
+            log.info("文件审批流程已启动: id={}, processInstanceId={}", id, pi.getId());
+        } catch (BusinessException e) {
+            log.warn("流程启动失败（降级为手动审批）: key=DMS_DOCUMENT, error={}", e.getMessage());
+        }
+
         record.setBusinessStatus("APPROVING");
         businessRecordService.updateById(record);
-        log.info("文件已提交审核: id={}, no={}", id, record.getBusinessNo());
         return Result.okMsg("文件已提交审核");
     }
 
@@ -149,5 +169,21 @@ public class DmsController extends CommonController<BusinessRecordService, Busin
     public Result<Void> recallDocument(@PathVariable Long id) {
         log.info("回收文件 - ID: {}", id);
         return Result.okMsg("文件回收指令已发出");
+    }
+
+    /**
+     * 按业务编号更新状态（供工作流回调使用）
+     */
+    @PutMapping("/document/by-no/{businessNo}/status")
+    public Result<Void> updateStatusByBusinessNo(@PathVariable String businessNo, @RequestParam String status) {
+        LambdaQueryWrapper<BusinessRecord> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(BusinessRecord::getBusinessNo, businessNo);
+        BusinessRecord record = businessRecordService.getOne(wrapper);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "记录不存在");
+        record.setBusinessStatus(status);
+        if ("COMPLETED".equals(status)) record.setCompletedAt(LocalDateTime.now());
+        businessRecordService.updateById(record);
+        log.info("工作流回调更新状态: businessNo={}, status={}", businessNo, status);
+        return Result.okMsg("状态已更新");
     }
 }

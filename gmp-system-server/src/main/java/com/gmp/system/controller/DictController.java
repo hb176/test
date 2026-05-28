@@ -7,6 +7,7 @@ import com.gmp.system.entity.SysDict;
 import com.gmp.system.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,13 +39,21 @@ public class DictController extends CommonController<SysDictService, SysDict> {
                 .list());
     }
 
+    @PreAuthorize("hasAuthority('system:dict:add')")
     @PostMapping
     public Result<SysDict> save(@RequestBody SysDict dict) {
         return saveEntity(dict);
     }
 
+    @PreAuthorize("hasAuthority('system:dict:edit')")
     @PutMapping
     public Result<SysDict> update(@RequestBody SysDict dict) {
         return updateEntity(dict);
+    }
+
+    @PreAuthorize("hasAuthority('system:dict:delete')")
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        return deleteById(id);
     }
 }
