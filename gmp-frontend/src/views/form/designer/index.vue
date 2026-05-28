@@ -25,7 +25,7 @@ const isEdit = !!formId
 const formDef = reactive({
   formKey: '',
   formName: '',
-  category: '',
+  category: 'QMS',
   description: '',
 })
 
@@ -125,10 +125,10 @@ async function handleSave() {
   }
   const formData = JSON.parse(generateSchema())
   const payload = {
-    formKey: formData.formKey,
-    formName: formData.formName,
-    category: formDef.category,
-    description: formDef.description,
+    code: formData.formKey,
+    name: formData.formName,
+    sysModule: formDef.category,
+    des: formDef.description,
     editContent: JSON.stringify(formData),
   }
   try {
@@ -150,10 +150,10 @@ async function loadForm() {
   try {
     const res = await getFormDefinitionById(Number(formId))
     const def = res.data
-    formDef.formKey = def.formKey || def.code || ''
-    formDef.formName = def.formName || def.name || ''
-    formDef.category = def.category || ''
-    formDef.description = def.description || ''
+    formDef.formKey = def.code || def.formKey || ''
+    formDef.formName = def.name || def.formName || ''
+    formDef.category = def.sysModule || def.category || 'QMS'
+    formDef.description = def.des || def.description || ''
     if (def.editContent) {
       const schema = typeof def.editContent === 'string' ? JSON.parse(def.editContent) : def.editContent
       if (schema.fields) {
@@ -190,7 +190,13 @@ function handlePreview() {
         <el-form-item label="表单Key" required><el-input v-model="formDef.formKey" placeholder="如 DEVIATION_FORM" /></el-form-item>
         <el-form-item label="表单名称" required><el-input v-model="formDef.formName" placeholder="如 偏差报告" /></el-form-item>
         <el-form-item label="分类">
-          <el-select v-model="formDef.category"><el-option label="QMS" value="QMS" /><el-option label="DMS" value="DMS" /></el-select>
+          <el-select v-model="formDef.category">
+            <el-option label="通用" value="COMM" />
+            <el-option label="质量管理" value="QMS" />
+            <el-option label="文件管理" value="DMS" />
+            <el-option label="培训管理" value="TMS" />
+            <el-option label="质量回顾" value="QRS" />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSave">保存</el-button>

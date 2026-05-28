@@ -3,9 +3,13 @@ package com.gmp.framework.workflow;
 import com.gmp.common.exceptions.BusinessException;
 import com.gmp.common.base.ResultCode;
 import lombok.extern.slf4j.Slf4j;
+import org.flowable.bpmn.model.BpmnModel;
+import org.flowable.bpmn.model.EndEvent;
+import org.flowable.bpmn.model.Process;
 import org.flowable.engine.*;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.engine.runtime.Execution;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
@@ -167,14 +171,65 @@ public abstract class WorkflowBaseService {
     }
 
     /**
-     * 终止流程实例（强制终止，不可恢复）
+     * 终止流程实例
+     * <p>
+     * 将所有执行实例跳转到结束事件节点，保留完整的流程历史数据。
+     * 与硬删除（deleteProcessInstance）不同，此方式会在 act_hi_actinst 中
+     * 留下完整的执行轨迹，便于审计和流程追踪。
+     * </p>
      *
-     * @param processInstanceId 流程实例ID
+     * @param processInstanceId 流程实例 ID
      * @param reason            终止原因
      */
     public void terminateProcess(String processInstanceId, String reason) {
-        runtimeService.deleteProcessInstance(processInstanceId, reason);
-        log.info("流程实例已终止 - 实例ID: {}, 原因: {}", processInstanceId, reason);
+        ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(processInstanceId).singleResult();
+        if (processInstance == null) {
+            log.warn("流程实例不存在，可能已结束: {}", processInstanceId);
+            return;
+        }
+
+        // 查找结束事件节点
+        String processDefinitionId = processInstance.getProcessDefinitionId();
+        BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
+        Process mainProcess = bpmnModel.getMainProcess();
+        List<EndEvent> endEvents = mainProcess.findFlowElementsOfType(EndEvent.class);
+        if (endEvents == null || endEvents.isEmpty()) {
+            // 找不到结束节点，降级为硬删除
+            log.warn("BPMN 模型中未找到结束事件节点，降级为硬删除: {}", processInstanceId);
+            runtimeService.deleteProcessInstance(processInstanceId, reason);
+            return;
+        }
+        String endEventId = endEvents.get(0).getId();
+
+        // 检查是否有子流程
+        ProcessInstance subProcess = runtimeService.createProcessInstanceQuery()
+                .superProcessInstanceId(processInstanceId).singleResult();
+
+        List<String> executionIds = new ArrayList<>();
+        if (subProcess != null) {
+            // 存在子流程，查找子流程的结束事件
+            BpmnModel subBpmnModel = repositoryService.getBpmnModel(subProcess.getProcessDefinitionId());
+            Process subMainProcess = subBpmnModel.getMainProcess();
+            List<EndEvent> subEndEvents = subMainProcess.findFlowElementsOfType(EndEvent.class);
+            if (subEndEvents != null && !subEndEvents.isEmpty()) {
+                endEventId = subEndEvents.get(0).getId();
+            }
+            List<Execution> executions = runtimeService.createExecutionQuery()
+                    .parentId(subProcess.getProcessInstanceId()).list();
+            executions.forEach(e -> executionIds.add(e.getId()));
+        } else {
+            List<Execution> executions = runtimeService.createExecutionQuery()
+                    .parentId(processInstanceId).list();
+            executions.forEach(e -> executionIds.add(e.getId()));
+        }
+
+        if (!executionIds.isEmpty()) {
+            runtimeService.createChangeActivityStateBuilder()
+                    .moveExecutionsToSingleActivityId(executionIds, endEventId)
+                    .changeState();
+        }
+        log.info("流程实例已终止（跳转到结束节点）- 实例ID: {}, 原因: {}", processInstanceId, reason);
     }
 
     // ==================== 任务管理 ====================
@@ -326,22 +381,60 @@ public abstract class WorkflowBaseService {
     }
 
     /**
-     * 加签（动态增加审批人）
-     *
-     * @param taskId      任务ID
-     * @param addAssignee 加签人ID
-     * @param comment     加签意见
+     * 撤回任务 — 将流程实例退回到发起节点
      */
-    public void addSignTask(String taskId, String addAssignee, String comment) {
+    public void withdrawTask(String taskId, String reason) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "任务不存在: " + taskId);
         }
-        // 创建子任务实现加签
-        // Flowable支持通过创建subtask实现加签
-        taskService.addComment(taskId, task.getProcessInstanceId(), "addSign",
-                "加签给: " + addAssignee + ", 意见: " + comment);
-        log.info("任务已加签 - 任务ID: {}, 加签人: {}", taskId, addAssignee);
+        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId()).singleResult();
+        if (pi == null) {
+            throw new BusinessException(ResultCode.WORKFLOW_ERROR, "流程已结束，无法撤回");
+        }
+        runtimeService.setVariable(task.getProcessInstanceId(), "withdrawReason",
+                reason != null ? reason : "发起人撤回");
+        runtimeService.setVariable(task.getProcessInstanceId(), "withdrawn", true);
+        runtimeService.deleteProcessInstance(task.getProcessInstanceId(),
+                "WITHDRAWN: " + (reason != null ? reason : "发起人撤回"));
+        log.info("流程已撤回: taskId={}, instanceId={}, reason={}", taskId, task.getProcessInstanceId(), reason);
+    }
+
+    /**
+     * 加签 — 在当前任务记录加签审批人
+     * @param type  QJQ(前加签)/HJQ(后加签)
+     */
+    public void countersignTask(String taskId, String type, List<String> userIds, String reason) {
+        Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
+        if (task == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "任务不存在: " + taskId);
+        }
+        for (String userId : userIds) {
+            // 通过Comment记录加签信息
+            String comment = String.format("[%s] 加签审批人=%s, 原因=%s",
+                    "QJQ".equals(type) ? "前加签" : "后加签",
+                    userId,
+                    reason != null ? reason : "无");
+            taskService.addComment(taskId, task.getProcessInstanceId(), "countersign", comment);
+            // 设置加签标记变量，供后续Flowable流转判断
+            runtimeService.setVariable(task.getProcessInstanceId(),
+                    "countersign_" + userId + "_type", type);
+        }
+        log.info("任务已加签: taskId={}, type={}, users={}", taskId, type, userIds);
+    }
+
+    /**
+     * 催办 — 记录催办操作（通知由消息中心发送）
+     */
+    public void urgeTask(String taskId) {
+        Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
+        if (task == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "任务不存在: " + taskId);
+        }
+        taskService.addComment(taskId, task.getProcessInstanceId(), "urge",
+                "催办提醒 — 请尽快处理");
+        log.info("催办已发送: taskId={}, assignee={}", taskId, task.getAssignee());
     }
 
     // ==================== 历史查询 ====================
@@ -421,5 +514,219 @@ public abstract class WorkflowBaseService {
      */
     public Map<String, Object> getProcessVariables(String processInstanceId) {
         return runtimeService.getVariables(processInstanceId);
+    }
+
+    // ==================== Facade 方法（仅返回 Map/List，不暴露 Flowable 类型） ====================
+
+    /** 模型分页查询 */
+    public Map<String, Object> getModelPage(int pageNum, int pageSize, String keyword) {
+        var q = repositoryService.createModelQuery().orderByLastUpdateTime().desc();
+        if (keyword != null && !keyword.isEmpty()) q.modelNameLike("%" + keyword + "%");
+        long total = q.count();
+        var models = q.listPage((pageNum - 1) * pageSize, pageSize);
+        List<Map<String, Object>> records = new java.util.ArrayList<>();
+        for (var m : models) {
+            Map<String, Object> r = new java.util.LinkedHashMap<>();
+            r.put("id", m.getId());
+            r.put("processName", m.getName());
+            r.put("processKey", m.getKey());
+            r.put("version", m.getVersion());
+            r.put("category", m.getCategory());
+            r.put("status", "DRAFT");
+            r.put("createTime", m.getCreateTime());
+            r.put("lastUpdateTime", m.getLastUpdateTime());
+            records.add(r);
+        }
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("records", records);
+        data.put("total", total);
+        return data;
+    }
+
+    /** 删除模型 */
+    public void deleteModel(String modelId) {
+        repositoryService.deleteModel(modelId);
+    }
+
+    /** 启动流程实例（返回实例信息 Map） */
+    public Map<String, Object> startProcessInstance(String processDefinitionKey, String businessKey,
+                                                     Map<String, Object> variables, String initiator) {
+        ProcessInstance pi = startProcess(processDefinitionKey, businessKey, variables, initiator);
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("processInstanceId", pi.getId());
+        result.put("businessKey", pi.getBusinessKey());
+        result.put("processStatus", "APPROVING");
+        return result;
+    }
+
+    /** 我发起的流程分页 */
+    public Map<String, Object> getMyStartedProcesses(String userId, int pageNum, int pageSize) {
+        var q = historyService.createHistoricProcessInstanceQuery()
+                .startedBy(userId).orderByProcessInstanceStartTime().desc();
+        long total = q.count();
+        var list = q.listPage((pageNum - 1) * pageSize, pageSize);
+        List<Map<String, Object>> records = new java.util.ArrayList<>();
+        for (var pi : list) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("processInstanceId", pi.getId());
+            m.put("name", pi.getName());
+            m.put("businessKey", pi.getBusinessKey());
+            m.put("startUserId", pi.getStartUserId());
+            m.put("startTime", pi.getStartTime());
+            m.put("endTime", pi.getEndTime());
+            records.add(m);
+        }
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("records", records);
+        data.put("total", total);
+        return data;
+    }
+
+    /** 流程实例详情 */
+    public Map<String, Object> getInstanceDetail(String instanceId) {
+        var pi = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(instanceId).singleResult();
+        if (pi == null) return null;
+        Map<String, Object> detail = new java.util.LinkedHashMap<>();
+        detail.put("id", pi.getId());
+        detail.put("name", pi.getName());
+        detail.put("businessKey", pi.getBusinessKey());
+        detail.put("startUserId", pi.getStartUserId());
+        detail.put("startTime", pi.getStartTime());
+        detail.put("endTime", pi.getEndTime());
+        return detail;
+    }
+
+    /** 候选任务列表 */
+    public List<Map<String, Object>> getClaimableTasks(int pageNum, int pageSize) {
+        var tasks = taskService.createTaskQuery()
+                .taskCandidateOrAssigned(null)
+                .orderByTaskCreateTime().asc()
+                .listPage((pageNum - 1) * pageSize, pageSize);
+        List<Map<String, Object>> records = new java.util.ArrayList<>();
+        for (var t : tasks) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("taskId", t.getId());
+            m.put("name", t.getName());
+            m.put("processInstanceId", t.getProcessInstanceId());
+            m.put("createTime", t.getCreateTime());
+            records.add(m);
+        }
+        return records;
+    }
+
+    /** 候选任务数量 */
+    public long countClaimableTasks() {
+        return taskService.createTaskQuery().taskUnassigned().count();
+    }
+
+    /** 流程执行轨迹 */
+    public List<Map<String, Object>> getProcessTrace(String processInstanceId) {
+        var activities = historyService.createHistoricActivityInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .orderByHistoricActivityInstanceStartTime().asc().list();
+        List<Map<String, Object>> trace = new java.util.ArrayList<>();
+        for (var a : activities) {
+            Map<String, Object> node = new java.util.LinkedHashMap<>();
+            node.put("activityId", a.getActivityId());
+            node.put("activityName", a.getActivityName());
+            node.put("activityType", a.getActivityType());
+            node.put("assignee", a.getAssignee());
+            node.put("startTime", a.getStartTime());
+            node.put("endTime", a.getEndTime());
+            node.put("durationInMillis", a.getDurationInMillis());
+            trace.add(node);
+        }
+        return trace;
+    }
+
+    // ==================== BPMN 模型 Facade（供 BpmnDesignerController 使用） ====================
+
+    /** 获取模型详情 */
+    public Map<String, Object> getModelById(String modelId) {
+        var model = repositoryService.getModel(modelId);
+        if (model == null) return null;
+        return modelToMap(model);
+    }
+
+    /** 按 key 查询模型 */
+    public Map<String, Object> getModelByKey(String modelKey) {
+        var models = repositoryService.createModelQuery().modelKey(modelKey).list();
+        if (models.isEmpty()) return null;
+        return modelToMap(models.get(0));
+    }
+
+    /** 获取模型 BPMN XML */
+    public String getModelSource(String modelId) {
+        byte[] source = repositoryService.getModelEditorSource(modelId);
+        return source != null ? new String(source, java.nio.charset.StandardCharsets.UTF_8) : "";
+    }
+
+    /** 创建或更新模型，返回模型 ID */
+    public String saveModel(String modelId, String name, String key, String category, String xml) {
+        var model = (modelId != null && !modelId.isEmpty())
+                ? repositoryService.getModel(modelId) : null;
+        if (model == null) model = repositoryService.newModel();
+        model.setName(name);
+        model.setKey(key != null && !key.isEmpty() ? key : model.getId());
+        model.setCategory(category != null && !category.isEmpty() ? category : "COMM");
+        repositoryService.saveModel(model);
+        repositoryService.addModelEditorSource(model.getId(),
+                xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return model.getId();
+    }
+
+    /** 部署流程定义，返回部署结果消息 */
+    public String deployModel(String name, String category, String xml) {
+        try {
+            repositoryService.createDeployment()
+                    .addString(name + ".bpmn20.xml", xml)
+                    .name(name)
+                    .category(category)
+                    .deploy();
+            return "流程已自动部署";
+        } catch (Exception e) {
+            log.warn("部署流程失败(模型已保存): {}", e.getMessage());
+            return "但部署失败: " + e.getMessage();
+        }
+    }
+
+    /** 校验 BPMN XML */
+    public String validateBpmn(String xml) {
+        try {
+            repositoryService.createDeployment()
+                    .addString("validate.bpmn", xml).deploy();
+            return null; // null = 通过
+        } catch (Exception e) {
+            return "校验失败: " + e.getMessage();
+        }
+    }
+
+    /** 查询所有模型列表 */
+    public List<Map<String, Object>> listAllModels() {
+        var models = repositoryService.createModelQuery()
+                .orderByLastUpdateTime().desc().list();
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (var m : models) result.add(modelToMap(m));
+        return result;
+    }
+
+    private Map<String, Object> modelToMap(Object modelObj) {
+        // 使用反射避免直接引用 org.flowable.engine.repository.Model 类型
+        try {
+            var m = (org.flowable.engine.repository.Model) modelObj;
+            Map<String, Object> r = new java.util.LinkedHashMap<>();
+            r.put("id", m.getId());
+            r.put("modelId", m.getId());
+            r.put("key", m.getKey());
+            r.put("name", m.getName());
+            r.put("category", m.getCategory());
+            r.put("version", m.getVersion());
+            r.put("createTime", m.getCreateTime());
+            r.put("lastUpdateTime", m.getLastUpdateTime());
+            return r;
+        } catch (Exception e) {
+            return java.util.Collections.emptyMap();
+        }
     }
 }

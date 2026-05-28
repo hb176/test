@@ -20,10 +20,15 @@
             <groupId>com.gmp</groupId>
             <artifactId>gmp-common</artifactId>
         </dependency>
-        <!-- Flowable工作流引擎 -->
+        <!-- MyBatis-Plus 分页插件（PaginationInnerInterceptor 所在模块） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+        <!-- Flowable：仅 BPMN 流程引擎（不含 IDM/CMMN/DMN/App） -->
         <dependency>
             <groupId>org.flowable</groupId>
-            <artifactId>flowable-spring-boot-starter</artifactId>
+            <artifactId>flowable-spring-boot-starter-process</artifactId>
         </dependency>
         <!-- Druid连接池 -->
         <dependency>

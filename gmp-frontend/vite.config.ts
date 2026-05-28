@@ -29,6 +29,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
+  build: {
+    // 生产构建不生成 source map，防止源码泄露
+    sourcemap: false,
+  },
   server: {
     port: 3000,
     proxy: {

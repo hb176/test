@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/auth/refresh-token",
                                 "/auth/token-expire-config",
                                 "/auth/user-info",
+                                "/auth/user-menus",
                                 "/auth/logout",
                                 "/public/**",
                                 "/actuator/health",

@@ -2,6 +2,8 @@ package com.gmp.file.controller;
 
 import com.gmp.framework.base.Result;
 import com.gmp.common.base.ResultCode;
+import com.gmp.file.entity.FileInfo;
+import com.gmp.file.service.FileInfoService;
 import com.gmp.file.service.FileStorageService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ import java.util.*;
 public class FileController {
 
     private final FileStorageService fileStorageService;
+    private final FileInfoService fileInfoService;
 
     /**
      * 上传文件
@@ -63,8 +66,24 @@ public class FileController {
         // 调用存储服务上传
         FileStorageService.UploadResult uploadResult = fileStorageService.uploadFile(file, bucketName, null);
 
-        // 构建响应（实际项目中还需保存file_info记录到数据库）
+        // 持久化文件记录
+        FileInfo fileInfo = new FileInfo();
+        fileInfo.setOriginalFileName(file.getOriginalFilename());
+        fileInfo.setName(file.getOriginalFilename());
+        fileInfo.setRealFilePath(uploadResult.bucketName() + "/" + uploadResult.objectName());
+        fileInfo.setBucket(uploadResult.bucketName());
+        fileInfo.setStoragePath(uploadResult.objectName());
+        fileInfo.setFileSize(uploadResult.fileSize());
+        fileInfo.setFileType(uploadResult.contentType());
+        fileInfo.setFileUuid(uploadResult.objectName());
+        fileInfo.setValidStatus("1");
+        fileInfo.setFileActionType("NEW");
+        if (businessType != null) fileInfo.setRecordType(businessType);
+        if (businessId != null) fileInfo.setRecordId(String.valueOf(businessId));
+        fileInfoService.save(fileInfo);
+
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fileId", fileInfo.getId());
         result.put("fileName", file.getOriginalFilename());
         result.put("fileSize", uploadResult.fileSize());
         result.put("mimeType", uploadResult.contentType());
@@ -72,8 +91,8 @@ public class FileController {
         result.put("objectName", uploadResult.objectName());
         result.put("uploadTime", new Date());
 
-        log.info("文件上传成功 - 原始文件名: {}, 存储路径: {}/{}",
-                file.getOriginalFilename(), uploadResult.bucketName(), uploadResult.objectName());
+        log.info("文件上传成功 - 原始文件名: {}, 存储路径: {}/{}, fileId={}",
+                file.getOriginalFilename(), uploadResult.bucketName(), uploadResult.objectName(), fileInfo.getId());
 
         return Result.ok("上传成功", result);
     }
@@ -185,5 +204,28 @@ public class FileController {
         info.put("lastModified", stat.lastModified());
         info.put("etag", stat.etag());
         return Result.ok(info);
+    }
+
+    /**
+     * 查询业务记录关联的文件列表
+     * GET /file/by-record/{recordId}
+     */
+    @GetMapping("/by-record/{recordId}")
+    public Result<List<FileInfo>> getFilesByRecord(@PathVariable Long recordId) {
+        return Result.ok(fileInfoService.listByRecordId(recordId));
+    }
+
+    /**
+     * 按ID删除文件记录（逻辑删除）
+     * DELETE /file/record/{id}
+     */
+    @DeleteMapping("/record/{id}")
+    public Result<Void> deleteFileRecord(@PathVariable Long id) {
+        FileInfo fileInfo = fileInfoService.getById(id);
+        if (fileInfo != null) {
+            fileStorageService.deleteFile(fileInfo.getBucket(), fileInfo.getStoragePath());
+            fileInfoService.removeById(id);
+        }
+        return Result.okMsg("删除成功");
     }
 }

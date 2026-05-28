@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { login, logout, getUserInfo } from '@/api/auth'
+import { login, logout, getUserInfo, getUserMenus } from '@/api/auth'
 import { setToken, removeToken, getToken, setRefreshToken, setTokenExpiresAt, setTokenExpiresIn } from '@/utils/auth'
 import router from '@/router'
 
@@ -18,6 +18,7 @@ export const useUserStore = defineStore('user', {
     permissions: [] as string[],
     deptId: null as number | null,
     deptName: '',
+    menus: [] as any[],
   }),
 
   getters: {
@@ -35,7 +36,11 @@ export const useUserStore = defineStore('user', {
       setTokenExpiresAt(expiresIn)
       setTokenExpiresIn(expiresIn)
       this.token = accessToken
-      await this.fetchUserInfo()
+      try {
+        await this.fetchUserInfo()
+      } catch (_) {
+        // fetchUserInfo 失败不阻塞登录，用户信息为空但 token 有效
+      }
       router.push('/dashboard')
     },
 
@@ -49,6 +54,13 @@ export const useUserStore = defineStore('user', {
       this.roles = user.roles || []
       this.permissions = user.permissions || []
       this.deptId = user.deptId
+      // 加载菜单权限
+      try {
+        const menuRes = await getUserMenus()
+        this.menus = menuRes.data || []
+      } catch (_) {
+        this.menus = []
+      }
     },
 
     /** 登出 */

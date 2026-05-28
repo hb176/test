@@ -28,6 +28,8 @@ public final class SystemConstants {
     // ==================== Redis相关 ====================
     /** Redis中Token黑名单的前缀 */
     public static final String REDIS_TOKEN_BLACKLIST_PREFIX = "gmp:token:blacklist:";
+    /** Redis中用户活跃会话前缀（单设备登录） */
+    public static final String REDIS_SESSION_PREFIX = "gmp:session:";
     /** Redis中验证码的前缀 */
     public static final String REDIS_CAPTCHA_PREFIX = "gmp:captcha:";
     /** Redis中分布式锁的前缀 */
@@ -46,7 +48,10 @@ public final class SystemConstants {
     public static final String ROLE_USER = "ROLE_USER";
     /** 默认管理员账号 */
     public static final String DEFAULT_ADMIN_USERNAME = "admin";
-    /** 默认管理员初始密码（首次登录强制修改） */
+    /**
+     * @deprecated 硬编码密码不安全，请使用 gmp.user.default-password 配置项
+     */
+    @Deprecated
     public static final String DEFAULT_ADMIN_PASSWORD = "admin123";
     /** 默认分页大小 */
     public static final int DEFAULT_PAGE_SIZE = 10;

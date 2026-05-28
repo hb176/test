@@ -5,10 +5,122 @@
     <link rel="icon" href="./favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>流程设计器(Flowable)</title>
-    <script type="module" crossorigin src="./assets/index-Bo6Zrd6L.js"></script>
+    <script type="module" crossorigin src="./assets/index-C96i37uC.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-BhAvFg1n.css">
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"></div>
+    <script>
+    // ===== 设计器行为注入脚本 =====
+    // 设计器加载后修改 properties panel 行为
+    (function() {
+      const observer = new MutationObserver(function(mutations) {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            try { patchPropertiesPanel(node); } catch(e) {}
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      function patchPropertiesPanel(root) {
+        // 1. ID字段自动生成且只读
+        patchIdField(root);
+        // 2. 部门树只显示不能点击
+        patchDeptTree(root);
+        // 3. 分配人员选项精简
+        patchAssigneeOptions(root);
+      }
+
+      // ---- ID字段：自动生成唯一ID，设为只读 ----
+      function patchIdField(root) {
+        // 查找 "id" 或 "节点ID" 标签旁边的 input
+        const labels = root.querySelectorAll ? root.querySelectorAll('label, .bpp-label, [data-label]') : [];
+        for (const label of labels) {
+          const text = label.textContent || '';
+          if (text.trim() === 'ID' || text.trim() === 'id' || text.includes('节点ID') || text.includes('流程ID')) {
+            const input = findNearbyInput(label);
+            if (input && !input.readOnly) {
+              input.readOnly = true;
+              input.style.backgroundColor = '#f5f7fa';
+              input.style.cursor = 'not-allowed';
+              // 自动生成唯一ID
+              if (!input.value || input.value.trim() === '') {
+                input.value = 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                triggerInputEvent(input);
+              }
+            }
+          }
+        }
+      }
+
+      // ---- 部门树：只能展示，点击不触发筛选 ----
+      function patchDeptTree(root) {
+        // 查找树节点，阻止点击事件冒泡到筛选逻辑
+        const treeNodes = root.querySelectorAll ? root.querySelectorAll('.el-tree-node__content, .org-tree-node, [class*="tree-node"]') : [];
+        for (const node of treeNodes) {
+          if (!node._deptPatched) {
+            node._deptPatched = true;
+            node.addEventListener('click', function(e) {
+              // 允许展开/折叠子节点，但阻止选中/筛选
+              const expandIcon = node.querySelector('.el-tree-node__expand-icon, [class*="expand"]');
+              if (expandIcon && (e.target === expandIcon || expandIcon.contains(e.target))) {
+                return; // 允许展开折叠
+              }
+              e.stopPropagation();
+              e.preventDefault();
+            }, true);
+          }
+        }
+      }
+
+      // ---- 分配人员选项：只保留"固定值"和"候选"，删除其他 ----
+      function patchAssigneeOptions(root) {
+        const selects = root.querySelectorAll ? root.querySelectorAll('select, .el-select') : [];
+        for (const select of selects) {
+          const label = findNearbyLabel(select);
+          if (!label) continue;
+          const labelText = label.textContent || '';
+          // 匹配分配类型下拉
+          if (labelText.includes('分配') || labelText.includes('审批人') || labelText.includes('Assignee') || labelText.includes('处理人')) {
+            if (select.tagName === 'SELECT') {
+              const options = select.querySelectorAll('option');
+              for (const opt of options) {
+                const val = (opt.value || opt.textContent || '').toLowerCase();
+                // 保留：固定值、指定人员、指定角色、候选
+                if (!val.includes('fixed') && !val.includes('assignee') && !val.includes('candidate') &&
+                    !val.includes('固定') && !val.includes('指定') && !val.includes('候选') &&
+                    !val.includes('role') && !val.includes('user') && !val.includes('人员') && !val.includes('角色')) {
+                  opt.style.display = 'none';
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // ---- 工具方法 ----
+      function findNearbyInput(label) {
+        const parent = label.parentElement;
+        if (!parent) return null;
+        return parent.querySelector('input, [contenteditable]') ||
+               parent.nextElementSibling?.querySelector?.('input') ||
+               label.nextElementSibling?.querySelector?.('input');
+      }
+
+      function findNearbyLabel(el) {
+        const parent = el.parentElement;
+        if (!parent) return null;
+        return parent.querySelector('label, .bpp-label, [data-label]') ||
+               parent.previousElementSibling;
+      }
+
+      function triggerInputEvent(input) {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    })();
+    </script>
   </body>
 </html>

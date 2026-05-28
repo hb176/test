@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { getMenuTree } from '@/api/system'
+import { getFormDefinitionList } from '@/api/form'
 import request from '@/utils/request'
 
 const loading = ref(false)
 const treeData = ref<any[]>([])
 const dialogVisible = ref(false)
-const editing = reactive<any>({ id: null, parentId: 0, menuName: '', menuType: 1, path: '', permission: '', icon: '', sortOrder: 0, visible: 1 })
+const formList = ref<any[]>([])
+const editing = reactive<any>({ id: null, parentId: 0, menuName: '', menuType: 1, path: '', permission: '', icon: '', sortOrder: 0, visible: 1, formKey: '' })
 
 function buildTree(items: any[], parentId = 0): any[] {
   return items.filter((m: any) => m.parentId === parentId).map((m: any) => ({ ...m, children: buildTree(items, m.id) }))
@@ -16,10 +18,17 @@ async function fetch() {
   finally { loading.value = false }
 }
 function openAdd(parentId = 0) {
-  Object.assign(editing, { id: null, parentId, menuName: '', menuType: parentId === 0 ? 0 : 1, path: '', permission: '', icon: '', sortOrder: 0, visible: 1 })
+  Object.assign(editing, { id: null, parentId, menuName: '', menuType: parentId === 0 ? 0 : 1, path: '', permission: '', icon: '', sortOrder: 0, visible: 1, formKey: '' })
   dialogVisible.value = true
+  if (parentId !== 0) loadFormList()
 }
-function openEdit(row: any) { Object.assign(editing, row); dialogVisible.value = true }
+function openEdit(row: any) { Object.assign(editing, row); dialogVisible.value = true; loadFormList() }
+async function loadFormList() {
+  try {
+    const r = await getFormDefinitionList({ pageNum: 1, pageSize: 100 })
+    formList.value = r.data?.records || []
+  } catch { formList.value = [] }
+}
 async function save() {
   if (editing.id) { await request.put(`/system/menu/${editing.id}`, editing) } else { await request.post('/system/menu', editing) }
   ElMessage.success('保存成功'); dialogVisible.value = false; fetch()
@@ -40,7 +49,7 @@ onMounted(fetch)
     <el-table :data="treeData" v-loading="loading" row-key="id" border stripe>
       <el-table-column prop="menuName" label="菜单名称" min-width="180" />
       <el-table-column prop="menuType" label="类型" width="80" align="center">
-        <template #default="{ row }"><el-tag :type="row.menuType===0?'':row.menuType===1?'success':'warning'" size="small">{{ {0:'目录',1:'菜单',2:'按钮'}[row.menuType] }}</el-tag></template>
+        <template #default="{ row }"><el-tag :type="row.menuType===0?'info':row.menuType===1?'success':'warning'" size="small">{{ ({0:'目录',1:'菜单',2:'按钮'} as Record<number,string>)[row.menuType] }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="path" label="路由路径" width="160" />
       <el-table-column prop="permission" label="权限标识" width="180" />
@@ -68,6 +77,11 @@ onMounted(fetch)
         <el-form-item label="图标"><el-input v-model="editing.icon" placeholder="Setting" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="editing.sortOrder" :min="0" /></el-form-item>
         <el-form-item label="可见"><el-switch v-model="editing.visible" :active-value="1" :inactive-value="0" /></el-form-item>
+        <el-form-item v-if="editing.menuType === 1" label="绑定表单">
+          <el-select v-model="editing.formKey" clearable filterable placeholder="选择表单（可选）" style="width: 100%">
+            <el-option v-for="f in formList" :key="f.code" :label="f.name" :value="f.code" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>

@@ -16,7 +16,9 @@ let refreshPromise: Promise<string> | null = null
 async function refreshAccessToken(): Promise<string> {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new Error('无RefreshToken')
-  const res = await axios.post('/api/auth/refresh-token', { refreshToken })
+  // 携带旧access token，后端校验是否匹配当前活跃会话（单设备登录）
+  const oldAccessToken = getToken()
+  const res = await axios.post('/api/auth/refresh-token', { refreshToken, oldAccessToken })
   if (res.data.code !== 200) throw new Error('刷新失败')
   const { accessToken, refreshToken: newRefreshToken, expiresIn } = res.data.data
   setToken(accessToken)

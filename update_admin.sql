@@ -1,1 +1,0 @@
-UPDATE sys_role SET role_code='ROLE_ADMIN', role_name='系统管理员', description='拥有所有权限', role_level=1, status=1, is_system=1 WHERE id=1;

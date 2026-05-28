@@ -12,6 +12,8 @@
  */
 import { getInstanceDetail, completeTask, delegateTask, transferTask, addSign, getProcessTrace } from '@/api/workflow'
 import { getFormDataById } from '@/api/form'
+import { saveSignature } from '@/api/system'
+import SignaturePad from '@/components/SignaturePad.vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 
@@ -33,6 +35,7 @@ const approveForm = reactive({
   transferUserId: '',
 })
 const submitting = ref(false)
+const signaturePadRef = ref<InstanceType<typeof SignaturePad> | null>(null)
 
 onMounted(async () => {
   try {
@@ -57,10 +60,28 @@ onMounted(async () => {
 
 /** 提交审批（通过/驳回） */
 async function handleSubmitApproval() {
+  // 非委派操作需要签名
+  if (approveForm.approveResult !== 'DELEGATED') {
+    if (!signaturePadRef.value || signaturePadRef.value.isEmpty()) {
+      ElMessage.warning('请先签名')
+      return
+    }
+  }
   submitting.value = true
   try {
     const currentTask = instance.value.currentTasks?.[0]
     if (!currentTask) { ElMessage.error('未找到当前任务'); return }
+
+    // 保存签名
+    if (approveForm.approveResult !== 'DELEGATED' && signaturePadRef.value) {
+      await saveSignature({
+        taskId: String(currentTask.taskId),
+        processInstanceId: String(instanceId),
+        userId: 0,
+        userName: '',
+        signatureData: signaturePadRef.value.toDataURL(),
+      })
+    }
 
     await completeTask(currentTask.taskId, {
       approveResult: approveForm.approveResult,
@@ -162,6 +183,9 @@ function formatTime(t: string) {
             <el-option label="张三" value="1001" />
             <el-option label="李四" value="1002" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="签名" v-if="approveForm.approveResult !== 'DELEGATED'">
+          <SignaturePad ref="signaturePadRef" :width="440" :height="150" />
         </el-form-item>
       </el-form>
       <template #footer>

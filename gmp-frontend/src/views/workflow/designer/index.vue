@@ -1,54 +1,38 @@
 <script setup lang="ts">
 /**
- * 流程设计器 — 内嵌 Flowable BPMN Designer
+ * 流程设计器页面
  *
- * 完整功能：定时器、执行监听器、多实例、表单绑定、Flowable 扩展属性
+ * 使用自研 ProcessDesigner 组件替代原有的 iframe 方案
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import ProcessDesigner from '@/components/ProcessDesigner/index.vue'
 
 const route = useRoute()
-const modelId = route.query.modelId as string || ''
+const router = useRouter()
 
-const designerUrl = ref('')
+const modelId = computed(() => (route.params.id || route.query.modelId) as string || '')
 
-onMounted(() => {
-  if (modelId) {
-    designerUrl.value = `/bpmn/designer/index.html#/bpmn/designer?modelId=${modelId}`
-  } else {
-    designerUrl.value = '/bpmn/designer/index.html#/bpmn/designer'
-  }
-})
-
-function handleIframeMessage(e: MessageEvent) {
-  const data = e.data
-  if (!data?.type) return
-  switch (data.type) {
-    case 'deploy-success':
-      ElMessage.success('流程已保存并部署')
-      break
-    case 'deploy-error':
-      ElMessage.error('部署失败: ' + data.message)
-      break
+function handleSave(xml: string, savedModelId?: string) {
+  ElMessage.success('流程已保存')
+  // 如果是新建且拿到了新 modelId，更新路由
+  if (savedModelId && !modelId.value) {
+    router.replace(`/workflow/designer/${savedModelId}`)
   }
 }
 
-onMounted(() => {
-  window.addEventListener('message', handleIframeMessage)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('message', handleIframeMessage)
-})
+function handleDeploy(modelId: string) {
+  ElMessage.success('流程已部署')
+}
 </script>
 
 <template>
   <div class="designer-page">
-    <iframe
-      v-if="designerUrl"
-      :src="designerUrl"
-      class="designer-iframe"
-      frameborder="0"
+    <ProcessDesigner
+      :model-id="modelId"
+      @save="handleSave"
+      @deploy="handleDeploy"
     />
   </div>
 </template>
@@ -58,10 +42,5 @@ onBeforeUnmount(() => {
   width: 100%;
   height: calc(100vh - 84px);
   overflow: hidden;
-}
-.designer-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
 }
 </style>

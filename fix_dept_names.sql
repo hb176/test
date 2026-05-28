@@ -1,1 +1,0 @@
-UPDATE sys_user SET dept_name = (SELECT dept_name FROM sys_dept WHERE id = dept_id) WHERE dept_id IS NOT NULL; UPDATE sys_user SET dept_name = '总公司' WHERE dept_name IS NULL AND dept_id IS NULL AND dept_ids IS NOT NULL

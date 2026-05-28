@@ -9,6 +9,7 @@ import com.gmp.system.mapper.SysRoleMenuMapper;
 import com.gmp.system.service.SysMenuService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -45,6 +46,7 @@ public class MenuController extends CommonController<SysMenuService, SysMenu> {
     }
 
     @PutMapping("/role/{roleId}")
+    @PreAuthorize("hasAuthority('system:role:menu')")
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> setRoleMenus(@PathVariable Long roleId, @RequestBody List<Long> menuIds) {
         // 删除旧关联
@@ -61,17 +63,20 @@ public class MenuController extends CommonController<SysMenuService, SysMenu> {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('system:menu:add')")
     public Result<SysMenu> create(@RequestBody SysMenu menu) {
         return saveEntity(menu);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('system:menu:edit')")
     public Result<SysMenu> update(@PathVariable Long id, @RequestBody SysMenu menu) {
         menu.setId(id);
         return updateEntity(menu);
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('system:menu:delete')")
     public Result<Void> delete(@PathVariable Long id) {
         return deleteById(id);
     }

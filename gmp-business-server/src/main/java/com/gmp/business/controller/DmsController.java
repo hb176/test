@@ -8,13 +8,16 @@ import com.gmp.business.service.impl.BusinessFacadeServiceImpl;
 import com.gmp.framework.base.CommonController;
 import com.gmp.framework.base.Result;
 import com.gmp.common.constant.BusinessType;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.gmp.business.entity.BusinessRecord;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.*;
 
 /**
  * DMS 文件管理控制器
@@ -36,47 +39,97 @@ public class DmsController extends CommonController<BusinessRecordService, Busin
         return businessRecordService;
     }
 
+    @PreAuthorize("hasAuthority('dms:document:add')")
     @PostMapping("/document")
     public Result<BusinessRecordVO> createDocument(@Valid @RequestBody CreateBusinessRequest request) {
         request.setBusinessType(BusinessType.DMS_DOCUMENT.getCode());
         return Result.ok("文件已创建，进入起草阶段", businessFacade.createBusinessRecord(request));
     }
 
+    @PreAuthorize("hasAuthority('dms:document:submit')")
     @PostMapping("/document/{id}/submit-review")
     public Result<Void> submitForReview(@PathVariable Long id) {
-        log.info("提交文件审核 - ID: {}", id);
-        return Result.okMsg("文件已提交审核，审核流程已启动");
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        record.setBusinessStatus("APPROVING");
+        businessRecordService.updateById(record);
+        log.info("文件已提交审核: id={}, no={}", id, record.getBusinessNo());
+        return Result.okMsg("文件已提交审核");
     }
 
     @GetMapping("/document/page")
     public Result<?> queryDocuments(@RequestParam(defaultValue = "1") int pageNum,
                                     @RequestParam(defaultValue = "10") int pageSize,
                                     @RequestParam(required = false) String status,
-                                    @RequestParam(required = false) String category,
                                     @RequestParam(required = false) String keyword) {
-        return Result.ok(businessRecordService.pageByBusinessType(
-                BusinessType.DMS_DOCUMENT.getCode(), pageNum, pageSize));
+        LambdaQueryWrapper<BusinessRecord> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(BusinessRecord::getBusinessType, BusinessType.DMS_DOCUMENT.getCode());
+        if (status != null && !status.isEmpty()) {
+            wrapper.eq(BusinessRecord::getBusinessStatus, status);
+        }
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like(BusinessRecord::getTitle, keyword)
+                    .or().like(BusinessRecord::getBusinessNo, keyword));
+        }
+        wrapper.orderByDesc(BusinessRecord::getCreateTime);
+        return Result.ok(businessRecordService.pageQuery(pageNum, pageSize, wrapper));
     }
 
     @GetMapping("/document/{id}")
     public Result<BusinessRecordVO> getDocument(@PathVariable Long id) {
-        return Result.ok(BusinessRecordVO.fromEntity(businessRecordService.getById(id)));
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        return Result.ok(BusinessRecordVO.fromEntity(record));
+    }
+
+    @PreAuthorize("hasAuthority('dms:document:edit')")
+    @PutMapping("/document/{id}")
+    public Result<Void> updateDocument(@PathVariable Long id, @RequestBody CreateBusinessRequest request) {
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        if (!"DRAFT".equals(record.getBusinessStatus())) {
+            return Result.fail(com.gmp.common.base.ResultCode.VALIDATION_FAILED, "仅草稿状态可编辑");
+        }
+        if (request.getTitle() != null) record.setTitle(request.getTitle());
+        if (request.getSummary() != null) record.setSummary(request.getSummary());
+        businessRecordService.updateById(record);
+        return Result.okMsg("更新成功");
     }
 
     @GetMapping("/document/{id}/versions")
-    public Result<List<?>> getVersionHistory(@PathVariable Long id) {
-        return Result.ok(Collections.emptyList());
+    public Result<List<Map<String, Object>>> getVersionHistory(@PathVariable Long id) {
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.ok(Collections.emptyList());
+        Map<String, Object> v1 = new LinkedHashMap<>();
+        v1.put("id", 1);
+        v1.put("title", "初始版本");
+        v1.put("createdAt", record.getCreateTime() != null ? record.getCreateTime().toString() : "");
+        return Result.ok(List.of(v1));
     }
 
+    @PreAuthorize("hasAuthority('dms:document:obsolete')")
     @PutMapping("/document/{id}/obsolete")
-    public Result<Void> obsoleteDocument(@PathVariable Long id, @RequestBody CreateBusinessRequest body) {
-        log.info("文件作废 - ID: {}", id);
+    public Result<Void> obsoleteDocument(@PathVariable Long id, @RequestBody(required = false) CreateBusinessRequest body) {
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        record.setBusinessStatus("OBSOLETED");
+        record.setCompletedAt(LocalDateTime.now());
+        String reason = body != null ? body.getReason() : null;
+        record.setSummary((record.getSummary() != null ? record.getSummary() : "") +
+                " [作废原因: " + (reason != null ? reason : "手动作废") + "]");
+        businessRecordService.updateById(record);
+        log.info("文件已作废: id={}, no={}", id, record.getBusinessNo());
         return Result.okMsg("文件已作废");
     }
 
+    @PreAuthorize("hasAuthority('dms:document:review')")
     @PostMapping("/document/{id}/re-review")
     public Result<Void> reReviewDocument(@PathVariable Long id) {
-        log.info("发起文件复审 - ID: {}", id);
+        BusinessRecord record = businessRecordService.getById(id);
+        if (record == null) return Result.fail(com.gmp.common.base.ResultCode.NOT_FOUND, "文件不存在");
+        record.setBusinessStatus("APPROVING");
+        businessRecordService.updateById(record);
+        log.info("文件复审已发起: id={}, no={}", id, record.getBusinessNo());
         return Result.okMsg("复审流程已启动");
     }
 

@@ -4,8 +4,9 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.gmp.common.security.SecurityContextHolder;
 import com.gmp.framework.base.CommonEntity;
-import com.gmp.system.entity.SysOperLog;
-import com.gmp.system.mapper.SysOperLogMapper;
+import com.gmp.system.entity.*;
+import com.gmp.system.mapper.*;
+import com.gmp.system.service.*;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,13 +14,11 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Aspect
@@ -29,8 +28,14 @@ public class OperLogAspect {
 
     private final SysOperLogMapper sysOperLogMapper;
     private final HttpServletRequest request;
-    @Autowired
-    private ApplicationContext ctx;
+    private final SysRoleMenuMapper sysRoleMenuMapper;
+    private final SysUserRoleMapper sysUserRoleMapper;
+    private final SysDeptService sysDeptService;
+    private final SysMenuService sysMenuService;
+    private final SysRoleService sysRoleService;
+    private final SysUserService sysUserService;
+    private final SysDictService sysDictService;
+    private final SysConfigService sysConfigService;
 
     @Around("execution(* com.gmp..controller..*(..)) && !execution(* com.gmp.system.controller.LogController.*(..))")
     public Object around(ProceedingJoinPoint point) throws Throwable {
@@ -40,83 +45,68 @@ public class OperLogAspect {
         String changeDetail = null;
         Object ret = null;
 
-        // PUT 请求：记录新旧变更
         Object[] args = point.getArgs();
         if ("PUT".equalsIgnoreCase(request.getMethod()) && args != null) {
             String url = request.getRequestURI();
-            // 角色菜单权限变更 — 对比新旧
+
+            // 角色菜单权限变更
             if (url.matches(".*/menu/role/\\d+") && args.length >= 2 && args[1] instanceof List) {
-                Long roleId = args[0] instanceof Long ? (Long) args[0] : Long.valueOf(String.valueOf(args[0]));
+                Long roleId = toLong(args[0]);
                 @SuppressWarnings("unchecked")
                 List<Long> newIds = (List<Long>) args[1];
-                try {
-                    Object rmMapper = ctx.getBean("sysRoleMenuMapper");
-                    Method selectByMap = rmMapper.getClass().getMethod("selectByMap", java.util.Map.class);
-                    List<?> oldRecords = (List<?>) selectByMap.invoke(rmMapper, java.util.Map.of("role_id", roleId));
-                    java.util.Set<Long> oldIds = new java.util.HashSet<>();
-                    for (Object r : oldRecords) oldIds.add((Long) r.getClass().getMethod("getMenuId").invoke(r));
-                    java.util.Set<Long> added = new java.util.HashSet<>(newIds); added.removeAll(oldIds);
-                    java.util.Set<Long> removed = new java.util.HashSet<>(oldIds); removed.removeAll(newIds);
-                    StringBuilder diff = new StringBuilder();
-                    if (!added.isEmpty()) diff.append("+").append(resolveMenuNames(added));
-                    if (!removed.isEmpty()) {
-                        if (diff.length() > 0) diff.append(" ");
-                        diff.append("-").append(resolveMenuNames(removed));
-                    }
-                    changeDetail = diff.length() > 0 ? diff.toString() : "菜单权限未变更";
-                } catch (Exception e) { changeDetail = "菜单权限已更新(共" + newIds.size() + "项)"; }
+                Set<Long> oldIds = sysRoleMenuMapper.selectByMap(Map.of("role_id", roleId))
+                        .stream().map(SysRoleMenu::getMenuId).collect(Collectors.toSet());
+                Set<Long> added = new HashSet<>(newIds); added.removeAll(oldIds);
+                Set<Long> removed = new HashSet<>(oldIds); removed.removeAll(newIds);
+                StringBuilder diff = new StringBuilder();
+                if (!added.isEmpty()) diff.append("+").append(resolveMenuNames(added));
+                if (!removed.isEmpty()) {
+                    if (diff.length() > 0) diff.append(" ");
+                    diff.append("-").append(resolveMenuNames(removed));
+                }
+                changeDetail = diff.length() > 0 ? diff.toString() : "菜单权限未变更";
             }
-            // 用户角色变更 — 对比新旧
+            // 用户角色变更
             else if (url.matches(".*/user/\\d+/roles") && args.length >= 2 && args[1] instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<Long> newIds = (List<Long>) args[1];
-                try {
-                    Object urMapper = ctx.getBean("sysUserRoleMapper");
-                    Method selectByMap = urMapper.getClass().getMethod("selectByMap", java.util.Map.class);
-                    Long userId = args[0] instanceof Long ? (Long) args[0] : Long.valueOf(String.valueOf(args[0]));
-                    List<?> oldRecords = (List<?>) selectByMap.invoke(urMapper, java.util.Map.of("user_id", userId));
-                    java.util.Set<Long> oldIds = new java.util.HashSet<>();
-                    for (Object r : oldRecords) oldIds.add((Long) r.getClass().getMethod("getRoleId").invoke(r));
-                    java.util.Set<Long> added = new java.util.HashSet<>(newIds); added.removeAll(oldIds);
-                    java.util.Set<Long> removed = new java.util.HashSet<>(oldIds); removed.removeAll(newIds);
-                    StringBuilder diff = new StringBuilder();
-                    if (!added.isEmpty()) diff.append("+").append(resolveRoleNames(added));
-                    if (!removed.isEmpty()) {
-                        if (diff.length() > 0) diff.append(" ");
-                        diff.append("-").append(resolveRoleNames(removed));
-                    }
-                    changeDetail = diff.length() > 0 ? diff.toString() : "用户角色未变更";
-                } catch (Exception e) { changeDetail = "用户角色已更新(共" + newIds.size() + "项)"; }
+                Long userId = toLong(args[0]);
+                Set<Long> oldIds = sysUserRoleMapper.selectByMap(Map.of("user_id", userId))
+                        .stream().map(SysUserRole::getRoleId).collect(Collectors.toSet());
+                Set<Long> added = new HashSet<>(newIds); added.removeAll(oldIds);
+                Set<Long> removed = new HashSet<>(oldIds); removed.removeAll(newIds);
+                StringBuilder diff = new StringBuilder();
+                if (!added.isEmpty()) diff.append("+").append(resolveRoleNames(added));
+                if (!removed.isEmpty()) {
+                    if (diff.length() > 0) diff.append(" ");
+                    diff.append("-").append(resolveRoleNames(removed));
+                }
+                changeDetail = diff.length() > 0 ? diff.toString() : "用户角色未变更";
             }
-            // 普通实体更新
+            // 普通实体更新 — 对比新旧值
             else {
                 for (Object arg : args) {
                     if (arg instanceof CommonEntity entity && entity.getId() != null) {
-                        try {
-                            String serviceBean = findServiceBean(url);
-                            if (serviceBean != null && ctx.containsBean(serviceBean)) {
-                                Object svc = ctx.getBean(serviceBean);
-                                Method getById = svc.getClass().getMethod("getById", java.io.Serializable.class);
-                                Object old = getById.invoke(svc, entity.getId());
-                                if (old != null) {
-                                    JSONObject oldJson = JSON.parseObject(JSON.toJSONString(old));
-                                    JSONObject newJson = JSON.parseObject(JSON.toJSONString(entity));
-                                    StringBuilder diff = new StringBuilder();
-                                    for (Map.Entry<String, Object> e : newJson.entrySet()) {
-                                        String k = e.getKey();
-                                        Object nv = e.getValue();
-                                        Object ov = oldJson.get(k);
-                                        if (nv != null && !nv.equals(ov) && !"updateTime".equals(k) && !"updateBy".equals(k) && !"version".equals(k) && !"password".equals(k)) {
-                                            String label = fieldLabel(k);
-                                            String ovStr = resolveNames(k, ov);
-                                            String nvStr = resolveNames(k, nv);
-                                            diff.append(label).append(": ").append(ovStr).append(" → ").append(nvStr).append("; ");
-                                        }
-                                    }
-                                    if (diff.length() > 0) changeDetail = diff.toString().trim();
+                        CommonEntity old = getOldEntity(url, entity.getId());
+                        if (old != null) {
+                            JSONObject oldJson = JSON.parseObject(JSON.toJSONString(old));
+                            JSONObject newJson = JSON.parseObject(JSON.toJSONString(entity));
+                            StringBuilder diff = new StringBuilder();
+                            for (Map.Entry<String, Object> e : newJson.entrySet()) {
+                                String k = e.getKey();
+                                Object nv = e.getValue();
+                                Object ov = oldJson.get(k);
+                                if (nv != null && !nv.equals(ov)
+                                        && !"updateTime".equals(k) && !"updateBy".equals(k)
+                                        && !"version".equals(k) && !"password".equals(k)) {
+                                    String label = fieldLabel(k);
+                                    String ovStr = resolveNames(k, ov);
+                                    String nvStr = resolveNames(k, nv);
+                                    diff.append(label).append(": ").append(ovStr).append(" → ").append(nvStr).append("; ");
                                 }
                             }
-                        } catch (Exception ignored) {}
+                            if (diff.length() > 0) changeDetail = diff.toString().trim();
+                        }
                         break;
                     }
                 }
@@ -144,7 +134,7 @@ public class OperLogAspect {
                 String module = extractModule(url);
                 operLog.setOperType(operType);
                 operLog.setModule(module);
-                operLog.setDescription(buildDescription(operType, module, changeDetail, point.getArgs()));
+                operLog.setDescription(buildDescription(operType, module, changeDetail, args));
                 operLog.setRequestUrl(url);
                 operLog.setRequestMethod(httpMethod);
                 operLog.setCostTime(cost);
@@ -152,7 +142,6 @@ public class OperLogAspect {
                 operLog.setErrorMsg(errorMsg);
                 operLog.setOperIp(request.getRemoteAddr());
 
-                // PUT 请求记录变更详情，其他记录请求参数
                 if (changeDetail != null) {
                     if (changeDetail.length() > 2000) changeDetail = changeDetail.substring(0, 2000);
                     operLog.setRequestParams(changeDetail);
@@ -168,8 +157,14 @@ public class OperLogAspect {
                 }
 
                 try {
-                    operLog.setOperUserId(SecurityContextHolder.getCurrentUserId());
-                    operLog.setOperUserName("admin"); // TODO: get from token
+                    Long currentUserId = SecurityContextHolder.getCurrentUserId();
+                    operLog.setOperUserId(currentUserId);
+                    if (currentUserId != null) {
+                        SysUser currentUser = sysUserService.getById(currentUserId);
+                        if (currentUser != null) {
+                            operLog.setOperUserName(currentUser.getUserName());
+                        }
+                    }
                 } catch (Exception ignored) {}
 
                 sysOperLogMapper.insert(operLog);
@@ -179,11 +174,26 @@ public class OperLogAspect {
         }
     }
 
+    private CommonEntity getOldEntity(String url, Long id) {
+        if (url.contains("/system/user/role")) return null;
+        if (url.contains("/system/user")) return sysUserService.getById(id);
+        if (url.contains("/system/role")) return sysRoleService.getById(id);
+        if (url.contains("/system/menu")) return sysMenuService.getById(id);
+        if (url.contains("/system/dept")) return sysDeptService.getById(id);
+        if (url.contains("/system/dict")) return sysDictService.getById(id);
+        if (url.contains("/system/config")) return sysConfigService.getById(id);
+        return null;
+    }
+
+    private Long toLong(Object v) {
+        return v instanceof Long ? (Long) v : Long.valueOf(String.valueOf(v));
+    }
+
     private String mapOperType(String httpMethod, String methodName) {
         if (methodName.contains("login") || methodName.contains("Login")) return "LOGIN";
         if (methodName.contains("logout")) return "LOGOUT";
         return switch (httpMethod) {
-            case "GET" -> methodName.contains("page") || methodName.contains("list") || methodName.contains("tree") ? "QUERY" : "QUERY";
+            case "GET" -> "QUERY";
             case "POST" -> "ADD";
             case "PUT" -> "UPDATE";
             case "DELETE" -> "DELETE";
@@ -210,17 +220,6 @@ public class OperLogAspect {
         return "其他";
     }
 
-    private String findServiceBean(String url) {
-        if (url.contains("/system/user/role")) return null;
-        if (url.contains("/system/user")) return "sysUserService";
-        if (url.contains("/system/role")) return "sysRoleService";
-        if (url.contains("/system/menu")) return "sysMenuService";
-        if (url.contains("/system/dept")) return "sysDeptService";
-        if (url.contains("/system/dict")) return "sysDictService";
-        if (url.contains("/system/config")) return "sysConfigService";
-        return null;
-    }
-
     private String buildDescription(String operType, String module, String changeDetail, Object[] args) {
         StringBuilder sb = new StringBuilder();
         if ("ADD".equals(operType)) sb.append("新增");
@@ -230,7 +229,6 @@ public class OperLogAspect {
 
         String url = request.getRequestURI();
 
-        // ADD
         if ("ADD".equals(operType) && args != null && args.length > 0 && args[0] != null) {
             try {
                 JSONObject obj = JSON.parseObject(JSON.toJSONString(args[0]));
@@ -238,25 +236,17 @@ public class OperLogAspect {
             } catch (Exception ignored) {}
         }
 
-        // UPDATE
         if ("UPDATE".equals(operType)) {
-            // Batch operations
             if (url.matches(".*/menu/role/\\d+") && args.length >= 2 && args[1] instanceof List) {
-                Long roleId = args[0] instanceof Long ? (Long) args[0] : Long.valueOf(String.valueOf(args[0]));
-                try {
-                    Object roleSvc = ctx.getBean("sysRoleService");
-                    Object role = roleSvc.getClass().getMethod("getById", java.io.Serializable.class).invoke(roleSvc, roleId);
-                    String roleName = role != null ? (String) role.getClass().getMethod("getRoleName").invoke(role) : String.valueOf(roleId);
-                    sb.append("角色 ").append(roleName).append(" 菜单权限");
-                } catch (Exception e) {
-                    sb.append("角色菜单权限");
-                }
+                Long roleId = toLong(args[0]);
+                SysRole role = sysRoleService.getById(roleId);
+                String roleName = role != null ? role.getRoleName() : String.valueOf(roleId);
+                sb.append("角色 ").append(roleName).append(" 菜单权限");
                 if (changeDetail != null && !changeDetail.isEmpty()) sb.append(": ").append(changeDetail);
             } else if (url.matches(".*/user/\\d+/roles") && args.length >= 2 && args[1] instanceof List) {
                 sb.append("用户角色");
                 if (changeDetail != null && !changeDetail.isEmpty()) sb.append(": ").append(changeDetail);
             } else if (args != null && args.length > 0 && args[0] != null) {
-                // Regular entity update
                 try {
                     JSONObject obj = JSON.parseObject(JSON.toJSONString(args[0]));
                     if (obj.containsKey("userName") || obj.containsKey("userId")) {
@@ -289,7 +279,6 @@ public class OperLogAspect {
         StringBuilder sb = new StringBuilder();
         if (obj.containsKey("userName") || obj.containsKey("userId")) {
             sb.append("用户 ").append(obj.getString("userName")).append("(").append(obj.getString("userId")).append(")");
-            // Show dept if present
             if (obj.containsKey("deptId")) {
                 String deptName = resolveDeptNames(String.valueOf(obj.get("deptId")));
                 if (!deptName.equals(String.valueOf(obj.get("deptId")))) sb.append(" 部门:").append(deptName);
@@ -307,7 +296,7 @@ public class OperLogAspect {
 
     private String fieldLabel(String field) {
         return switch (field) {
-            case "deptId" -> "主部门ID";
+            case "deptId" -> "主部门";
             case "deptIds" -> "所属部门";
             case "deptName" -> "主部门名";
             case "roleName" -> "角色名";
@@ -329,11 +318,9 @@ public class OperLogAspect {
         if (value == null) return "空";
         String str = String.valueOf(value);
         if (str.isEmpty()) return "空";
-        // deptIds / deptId: resolve to department names
         if ("deptIds".equals(field) || "deptId".equals(field)) {
             return resolveDeptNames(str);
         }
-        // status field
         if ("status".equals(field)) {
             return switch (str) {
                 case "NORM", "1" -> "启用";
@@ -345,88 +332,62 @@ public class OperLogAspect {
         return str;
     }
 
-    private String resolveMenuNames(java.util.Set<Long> ids) {
-        if (ids.isEmpty()) return "";
+    private String resolveMenuNames(Set<Long> ids) {
+        if (ids == null || ids.isEmpty()) return "";
         try {
-            Object svc = ctx.getBean("sysMenuService");
-            Method listMethod = svc.getClass().getMethod("list");
-            java.util.List<?> menus = (java.util.List<?>) listMethod.invoke(svc);
-            StringBuilder sb = new StringBuilder();
-            for (Long id : ids) {
-                for (Object m : menus) {
-                    Method getId = m.getClass().getMethod("getId");
-                    Method getName = m.getClass().getMethod("getMenuName");
-                    if (id.equals(getId.invoke(m))) {
-                        if (sb.length() > 0) sb.append(",");
-                        sb.append(getName.invoke(m));
-                        break;
-                    }
-                }
-            }
-            return sb.length() > 0 ? sb.toString() : String.valueOf(ids.size()) + "个";
+            List<SysMenu> menus = sysMenuService.listByIds(new ArrayList<>(ids));
+            Map<Long, String> idToName = menus.stream()
+                    .collect(Collectors.toMap(SysMenu::getId, SysMenu::getMenuName, (a, b) -> a));
+            return ids.stream()
+                    .map(id -> idToName.getOrDefault(id, String.valueOf(id)))
+                    .collect(Collectors.joining(","));
         } catch (Exception e) {
-            return String.valueOf(ids.size()) + "个";
+            log.warn("解析菜单名称失败: ids={}, error={}", ids, e.getMessage());
+            return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
         }
     }
 
-    private String resolveRoleNames(java.util.Set<Long> ids) {
-        if (ids.isEmpty()) return "";
+    private String resolveRoleNames(Set<Long> ids) {
+        if (ids == null || ids.isEmpty()) return "";
         try {
-            Object svc = ctx.getBean("sysRoleService");
-            Method listMethod = svc.getClass().getMethod("list");
-            java.util.List<?> roles = (java.util.List<?>) listMethod.invoke(svc);
-            StringBuilder sb = new StringBuilder();
-            for (Long id : ids) {
-                for (Object r : roles) {
-                    Method getId = r.getClass().getMethod("getId");
-                    Method getName = r.getClass().getMethod("getRoleName");
-                    if (id.equals(getId.invoke(r))) {
-                        if (sb.length() > 0) sb.append(",");
-                        sb.append(getName.invoke(r));
-                        break;
-                    }
-                }
-            }
-            return sb.length() > 0 ? sb.toString() : String.valueOf(ids.size()) + "个";
+            List<SysRole> roles = sysRoleService.listByIds(new ArrayList<>(ids));
+            Map<Long, String> idToName = roles.stream()
+                    .collect(Collectors.toMap(SysRole::getId, SysRole::getRoleName, (a, b) -> a));
+            return ids.stream()
+                    .map(id -> idToName.getOrDefault(id, String.valueOf(id)))
+                    .collect(Collectors.joining(","));
         } catch (Exception e) {
-            return String.valueOf(ids.size()) + "个";
+            log.warn("解析角色名称失败: ids={}, error={}", ids, e.getMessage());
+            return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
         }
     }
 
     private String resolveDeptNames(String ids) {
+        if (ids == null || ids.trim().isEmpty()) return ids;
         try {
-            Object svc = ctx.getBean("sysDeptService");
-            Method listMethod = svc.getClass().getMethod("list");
-            @SuppressWarnings("unchecked")
-            java.util.List<?> depts = (java.util.List<?>) listMethod.invoke(svc);
-            StringBuilder sb = new StringBuilder();
-            for (String idStr : ids.split(",")) {
-                try {
-                    long id = Long.parseLong(idStr.trim());
-                    for (Object d : depts) {
-                        Method getId = d.getClass().getMethod("getId");
-                        Method getName = d.getClass().getMethod("getDeptName");
-                        if (id == (Long) getId.invoke(d)) {
-                            if (sb.length() > 0) sb.append(",");
-                            sb.append(getName.invoke(d));
-                            break;
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-            return sb.length() > 0 ? sb.toString() : ids;
+            List<Long> idList = Arrays.stream(ids.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(s -> {
+                        try { return Long.parseLong(s); }
+                        catch (NumberFormatException e) { return null; }
+                    })
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (idList.isEmpty()) return ids;
+
+            List<SysDept> depts = sysDeptService.listByIds(idList);
+            Map<Long, String> idToName = depts.stream()
+                    .collect(Collectors.toMap(SysDept::getId, SysDept::getDeptName, (a, b) -> a));
+            return idList.stream()
+                    .map(id -> {
+                        String name = idToName.get(id);
+                        return name != null ? name : id + "(已删除)";
+                    })
+                    .collect(Collectors.joining(","));
         } catch (Exception e) {
+            log.warn("解析部门名称失败: ids={}, error={}", ids, e.getMessage());
             return ids;
         }
-    }
-
-    private String getParams(Object[] args) {
-        if (args != null && args.length > 0) {
-            try {
-                String s = JSON.toJSONString(args[0]);
-                return s.length() > 2000 ? s.substring(0, 2000) : s;
-            } catch (Exception ignored) {}
-        }
-        return null;
     }
 }

@@ -21,13 +21,13 @@ async function fetch() {
       request.get(`/system/user/${userId}`),
       getDeptTree(),
       getRoleList(),
-      request.get(`/system/user/${userId}/roles`).catch(() => ({ data: { data: [] } }))
+      request.get(`/system/user/${userId}/roles`).catch(() => ({ data: [] }))
     ])
     Object.assign(user, userRes.data?.data || userRes.data || {})
     deptTree.value = deptRes.data || []
     roleList.value = roleRes.data || []
     selectedDepts.value = user.deptIds ? user.deptIds.split(',').map(Number) : (user.deptId ? [user.deptId] : [])
-    selectedRoles.value = userRoleRes.data?.data || userRoleRes.data || []
+    selectedRoles.value = userRoleRes.data || []
   } finally { loading.value = false }
 }
 const displayDeptName = computed(() => {
@@ -50,6 +50,7 @@ async function save() {
   await updateUser(userId, user)
   await request.put(`/system/user/${userId}/roles`, selectedRoles.value)
   ElMessage.success('已保存')
+  await fetch()
 }
 
 async function savePwd() { await resetPassword(userId, pwdForm.password); ElMessage.success('密码已重置'); pwdDialogVisible.value = false }

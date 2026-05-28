@@ -32,12 +32,14 @@ import java.util.Set;
  * 2. 从请求头/ Cookie中提取JWT Token
  * 3. 校验Token是否有效且未过期
  * 4. 检查Token是否在黑名单中（已登出、已强制下线）
- * 5. 解析用户信息并通过请求头传递给下游服务
- * 6. 放行到目标微服务
+ * 5. 解析Token中的用户信息
+ * 6. 检查Redis中的活跃会话（单设备登录校验，新登录踢旧登录）
+ * 7. 将用户信息通过请求头传递给下游服务并放行
  *
- * 白名单路径（无需认证）：
+ * 白名单路径（无需认证，但仍需携带有效Token）：
  * - /auth/login, /auth/register (登录注册)
  * - /auth/captcha (验证码)
+ * - /auth/refresh-token (Token刷新)
  * - /public/** (公开资源)
  * - /actuator/health (健康检查)
  * - /swagger-ui/**, /v3/api-docs/** (API文档)
@@ -60,6 +62,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             "/auth/register",
             "/auth/captcha",
             "/auth/refresh-token",
+
             "/public/",
             "/actuator/health",
             "/actuator/info",
@@ -102,28 +105,55 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
                 return unauthorizedResponse(exchange, "Token已失效，请重新登录");
             }
 
-            // 5. 解析用户信息并添加请求头传递给下游服务
+            // 5. 解析Token中的用户信息
             try {
                 Claims claims = JwtUtils.parseToken(token);
                 Long userId = claims.get("userId", Long.class);
                 String username = claims.getSubject();
-                String roles = claims.get("roles", String.class);
 
-                ServerHttpRequest modifiedRequest = request.mutate()
-                        .header("X-User-Id", String.valueOf(userId))
-                        .header("X-User-Name", username)
-                        .header("X-User-Roles", roles)
-                        .header("X-Request-Path", path)
-                        .build();
-
-                log.debug("认证通过 - 用户: {} (ID: {}), 路径: {}", username, userId, path);
-                return chain.filter(exchange.mutate().request(modifiedRequest).build());
+                // 6. 单设备登录校验：检查Redis中的活跃会话
+                String sessionKey = SystemConstants.REDIS_SESSION_PREFIX + userId;
+                return redisTemplate.opsForValue().get(sessionKey)
+                    .flatMap(activeToken -> {
+                        if (!activeToken.equals(token)) {
+                            log.warn("账号在其他设备登录 - 用户: {} (ID: {}), 当前Token已被踢下线", username, userId);
+                            return unauthorizedResponse(exchange, "账号已在其他设备登录，请重新登录");
+                        }
+                        return proceedWithRequest(exchange, chain, request, claims, path);
+                    })
+                    .switchIfEmpty(Mono.defer(() ->
+                        proceedWithRequest(exchange, chain, request, claims, path)
+                    ));
 
             } catch (Exception e) {
                 log.error("解析Token信息失败 - 路径: {}", path, e);
                 return unauthorizedResponse(exchange, "Token解析失败");
             }
         });
+    }
+
+    /**
+     * 构建请求头并放行到下游服务
+     */
+    private Mono<Void> proceedWithRequest(ServerWebExchange exchange, GatewayFilterChain chain,
+                                           ServerHttpRequest request, Claims claims, String path) {
+        Long userId = claims.get("userId", Long.class);
+        String username = claims.getSubject();
+        String roles = claims.get("roles", String.class);
+        String permissions = claims.get("permissions", String.class);
+        Long deptId = claims.get("deptId", Long.class);
+
+        ServerHttpRequest modifiedRequest = request.mutate()
+                .header("X-User-Id", String.valueOf(userId))
+                .header("X-User-Name", username)
+                .header("X-User-Roles", roles != null ? roles : "")
+                .header("X-User-Permissions", permissions != null ? permissions : "")
+                .header("X-User-Dept-Id", deptId != null ? String.valueOf(deptId) : "")
+                .header("X-Request-Path", path)
+                .build();
+
+        log.debug("认证通过 - 用户: {} (ID: {}), 路径: {}", username, userId, path);
+        return chain.filter(exchange.mutate().request(modifiedRequest).build());
     }
 
     /**

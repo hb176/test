@@ -9,6 +9,7 @@ import com.gmp.system.mapper.SysRoleMenuMapper;
 import com.gmp.system.service.SysRoleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -48,6 +49,7 @@ public class RoleController extends CommonController<SysRoleService, SysRole> {
         result.put("roleName", role.getRoleName());
         result.put("description", role.getDescription());
         result.put("roleLevel", role.getRoleLevel());
+        result.put("dataScope", role.getDataScope());
         result.put("status", role.getStatus());
         result.put("isSystem", role.getIsSystem());
         result.put("menuIds", menuIds);
@@ -55,6 +57,7 @@ public class RoleController extends CommonController<SysRoleService, SysRole> {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('system:role:add')")
     public Result<SysRole> create(@RequestBody SysRole role) {
         if (sysRoleService.lambdaQuery().eq(SysRole::getRoleCode, role.getRoleCode()).count() > 0) {
             return fail(com.gmp.common.base.ResultCode.VALIDATION_FAILED, "角色编码已存在");
@@ -66,6 +69,7 @@ public class RoleController extends CommonController<SysRoleService, SysRole> {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('system:role:edit')")
     public Result<SysRole> update(@PathVariable Long id, @RequestBody SysRole role) {
         if (sysRoleService.lambdaQuery().eq(SysRole::getRoleCode, role.getRoleCode()).ne(SysRole::getId, id).count() > 0) {
             return fail(com.gmp.common.base.ResultCode.VALIDATION_FAILED, "角色编码已存在");
@@ -78,6 +82,7 @@ public class RoleController extends CommonController<SysRoleService, SysRole> {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('system:role:delete')")
     public Result<Void> delete(@PathVariable Long id) {
         // 删除角色时同时清除角色-菜单关联
         roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, id));

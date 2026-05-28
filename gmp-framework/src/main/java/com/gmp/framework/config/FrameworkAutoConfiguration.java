@@ -1,5 +1,8 @@
 package com.gmp.framework.config;
 
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
@@ -27,6 +30,14 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 // 开启异步方法支持(配合@Async注解使用)
 @EnableAsync
 public class FrameworkAutoConfiguration {
+
+    /** MyBatis-Plus 分页插件（必须配置，否则 page() 方法不生效） */
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor());
+        return interceptor;
+    }
 
     /*
      * 框架核心能力清单：

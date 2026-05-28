@@ -1,1 +1,0 @@
-SELECT id, user_id, user_name, dept_id, dept_name, dept_ids FROM sys_user

@@ -7,7 +7,7 @@ spring:
       enabled: false
   datasource:
     druid:
-      url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/gmp_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+      url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/gmp_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: ${DB_USER:root}
       password: ${DB_PASS:root}
       driver-class-name: com.mysql.cj.jdbc.Driver

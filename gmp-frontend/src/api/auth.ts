@@ -16,6 +16,10 @@ export function refreshToken(refreshToken: string) {
 export function getUserInfo() {
   return request.get('/auth/user-info')
 }
+/** 获取当前用户的菜单权限 */
+export function getUserMenus() {
+  return request.get('/auth/user-menus')
+}
 /** 获取Token过期配置 */
 export function getTokenExpireConfig() {
   return request.get('/auth/token-expire-config')

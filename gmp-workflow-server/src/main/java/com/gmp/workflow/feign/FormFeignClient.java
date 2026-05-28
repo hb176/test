@@ -24,8 +24,15 @@ import java.util.Map;
 public interface FormFeignClient {
 
     /**
+     * 获取表单定义列表（分页）
+     */
+    @GetMapping("/definition/page")
+    Result<Map<String, Object>> getDefinitionPage(
+            @RequestParam("pageNum") int pageNum,
+            @RequestParam("pageSize") int pageSize);
+
+    /**
      * 根据formKey获取最新已发布的表单定义（含完整JSON Schema）
-     * 流程启动和审批页面渲染时调用
      */
     @GetMapping("/definition/key/{formKey}")
     Result<Map<String, Object>> getDefinitionByKey(@PathVariable("formKey") String formKey);

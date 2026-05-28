@@ -1,21 +1,31 @@
 package com.gmp.form.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.gmp.framework.base.PageResult;
 import com.gmp.framework.base.Result;
+import com.gmp.common.base.ResultCode;
+import com.gmp.form.entity.FormDefinition;
+import com.gmp.form.entity.FormData;
+import com.gmp.form.service.FormDataService;
+import com.gmp.form.service.FormDefinitionService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 
 /**
  * 表单管理控制器 - 表单定义与表单数据的CRUD接口
- *
- * @author hb176
- * @since 1.0.0
  */
 @Slf4j
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/form")
 public class FormController {
+
+    private final FormDefinitionService formDefinitionService;
+    private final FormDataService formDataService;
 
     // ==================== 表单定义管理 ====================
 
@@ -26,78 +36,105 @@ public class FormController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword) {
-        log.info("查询表单定义列表 - pageNum={}, pageSize={}", pageNum, pageSize);
+        var wrapper = new LambdaQueryWrapper<FormDefinition>();
+        if (category != null && !category.isEmpty()) wrapper.eq(FormDefinition::getSysModule, category);
+        if (status != null && !status.isEmpty()) wrapper.eq(FormDefinition::getStatus, status);
+        if (keyword != null && !keyword.isEmpty()) wrapper.and(w -> w
+                .like(FormDefinition::getName, keyword).or().like(FormDefinition::getCode, keyword));
+        wrapper.orderByDesc(FormDefinition::getCreateTime);
+        PageResult<FormDefinition> page = formDefinitionService.pageQuery(pageNum, pageSize, wrapper);
+
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("records", Collections.emptyList());
-        data.put("total", 0);
+        data.put("records", page.getRecords());
+        data.put("total", page.getTotal());
         return Result.ok(data);
     }
 
     @GetMapping("/definition/{id}")
-    public Result<Map<String, Object>> getDefinitionById(@PathVariable Long id) {
-        log.info("获取表单定义详情 - ID: {}", id);
-        Map<String, Object> def = new LinkedHashMap<>();
-        def.put("id", id);
-        def.put("formKey", "example_form");
-        def.put("formName", "示例表单");
-        def.put("formSchema", "{}");
+    public Result<FormDefinition> getDefinitionById(@PathVariable Long id) {
+        FormDefinition def = formDefinitionService.getById(id);
+        if (def == null) return Result.fail(ResultCode.NOT_FOUND, "表单定义不存在");
         return Result.ok(def);
     }
 
     @GetMapping("/definition/key/{formKey}")
-    public Result<Map<String, Object>> getDefinitionByKey(@PathVariable String formKey) {
-        log.info("根据Key获取表单定义 - formKey: {}", formKey);
-        return Result.ok(Collections.emptyMap());
+    public Result<FormDefinition> getDefinitionByKey(@PathVariable String formKey) {
+        FormDefinition def = formDefinitionService.getOne(
+                new LambdaQueryWrapper<FormDefinition>().eq(FormDefinition::getCode, formKey));
+        if (def == null) return Result.fail(ResultCode.NOT_FOUND, "表单定义不存在");
+        return Result.ok(def);
     }
 
+    @PreAuthorize("hasAuthority('form:definition:add')")
     @PostMapping("/definition")
-    public Result<Map<String, Object>> createDefinition(@RequestBody Map<String, Object> definition) {
-        log.info("创建表单定义 - formKey: {}, formName: {}",
-                definition.get("formKey"), definition.get("formName"));
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", System.currentTimeMillis());
-        result.put("version", 1);
-        return Result.ok("创建成功", result);
+    public Result<FormDefinition> createDefinition(@RequestBody FormDefinition definition) {
+        // 检查编码唯一性
+        if (definition.getCode() != null) {
+            long count = formDefinitionService.lambdaQuery()
+                    .eq(FormDefinition::getCode, definition.getCode()).count();
+            if (count > 0) return Result.fail(ResultCode.VALIDATION_FAILED, "表单编码已存在");
+        }
+        definition.setStatus("NORM");
+        formDefinitionService.save(definition);
+        return Result.ok("创建成功", definition);
     }
 
+    @PreAuthorize("hasAuthority('form:definition:edit')")
     @PutMapping("/definition/{id}")
-    public Result<Map<String, Object>> updateDefinition(@PathVariable Long id,
-                                                         @RequestBody Map<String, Object> definition) {
-        log.info("更新表单定义 - ID: {}", id);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", id);
-        result.put("version", 2);
-        return Result.ok("更新成功，新版本已创建", result);
+    public Result<FormDefinition> updateDefinition(@PathVariable Long id,
+                                                     @RequestBody FormDefinition definition) {
+        FormDefinition existing = formDefinitionService.getById(id);
+        if (existing == null) return Result.fail(ResultCode.NOT_FOUND, "表单定义不存在");
+        definition.setId(id);
+        formDefinitionService.updateById(definition);
+        return Result.ok("更新成功", definition);
     }
 
     @PutMapping("/definition/{id}/publish")
     public Result<Void> publishDefinition(@PathVariable Long id) {
-        log.info("发布表单定义 - ID: {}", id);
+        FormDefinition def = formDefinitionService.getById(id);
+        if (def == null) return Result.fail(ResultCode.NOT_FOUND, "表单定义不存在");
+        def.setStatus("PUBLISHED");
+        formDefinitionService.updateById(def);
         return Result.okMsg("发布成功");
     }
 
     @PutMapping("/definition/{id}/archive")
     public Result<Void> archiveDefinition(@PathVariable Long id) {
-        log.info("归档表单定义 - ID: {}", id);
+        FormDefinition def = formDefinitionService.getById(id);
+        if (def == null) return Result.fail(ResultCode.NOT_FOUND, "表单定义不存在");
+        def.setStatus("ARCHIVED");
+        formDefinitionService.updateById(def);
         return Result.okMsg("归档成功");
     }
 
+    @PreAuthorize("hasAuthority('form:definition:delete')")
     @DeleteMapping("/definition/{id}")
     public Result<Void> deleteDefinition(@PathVariable Long id) {
-        log.info("删除表单定义 - ID: {}", id);
+        formDefinitionService.removeById(id);
         return Result.okMsg("删除成功");
     }
 
     @PostMapping("/definition/{id}/copy")
-    public Result<Map<String, Object>> copyDefinition(@PathVariable Long id,
-                                                       @RequestBody Map<String, String> body) {
-        log.info("复制表单定义 - 源ID: {}, 新formKey: {}", id, body.get("formKey"));
-        return Result.ok("复制成功", Collections.emptyMap());
-    }
+    public Result<FormDefinition> copyDefinition(@PathVariable Long id,
+                                                   @RequestBody Map<String, String> body) {
+        FormDefinition source = formDefinitionService.getById(id);
+        if (source == null) return Result.fail(ResultCode.NOT_FOUND, "源表单不存在");
 
-    @GetMapping("/definition/{id}/versions")
-    public Result<List<Map<String, Object>>> getDefinitionVersions(@PathVariable Long id) {
-        return Result.ok(Collections.emptyList());
+        FormDefinition copy = new FormDefinition();
+        copy.setName(body.getOrDefault("name", source.getName() + " (副本)"));
+        copy.setCode(body.get("formKey"));
+        copy.setSysModule(source.getSysModule());
+        copy.setModule(source.getModule());
+        copy.setEditContent(source.getEditContent());
+        copy.setViewContent(source.getViewContent());
+        copy.setAddContent(source.getAddContent());
+        copy.setJsContent(source.getJsContent());
+        copy.setWorkflowKey(source.getWorkflowKey());
+        copy.setFormRangeType(source.getFormRangeType());
+        copy.setStatus("NORM");
+        formDefinitionService.save(copy);
+        return Result.ok("复制成功", copy);
     }
 
     // ==================== 表单数据管理 ====================
@@ -109,59 +146,54 @@ public class FormController {
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String dataStatus) {
-        log.info("查询表单数据 - formKey: {}, pageNum={}, pageSize={}", formKey, pageNum, pageSize);
+        var wrapper = new LambdaQueryWrapper<FormData>()
+                .eq(FormData::getFormKey, formKey);
+        if (dataStatus != null && !dataStatus.isEmpty()) wrapper.eq(FormData::getDataStatus, dataStatus);
+        if (keyword != null && !keyword.isEmpty()) wrapper.like(FormData::getIndexedTitle, keyword);
+        wrapper.orderByDesc(FormData::getCreateTime);
+        PageResult<FormData> page = formDataService.pageQuery(pageNum, pageSize, wrapper);
+
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("records", Collections.emptyList());
-        data.put("total", 0);
+        data.put("records", page.getRecords());
+        data.put("total", page.getTotal());
         return Result.ok(data);
     }
 
     @GetMapping("/data/{id}")
-    public Result<Map<String, Object>> getFormDataById(@PathVariable Long id) {
-        log.info("获取表单数据详情 - ID: {}", id);
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", id);
-        data.put("formData", "{}");
+    public Result<FormData> getFormDataById(@PathVariable Long id) {
+        FormData data = formDataService.getById(id);
+        if (data == null) return Result.fail(ResultCode.NOT_FOUND, "表单数据不存在");
         return Result.ok(data);
     }
 
     @PostMapping("/data")
-    public Result<Map<String, Object>> createFormData(@RequestBody Map<String, Object> formData) {
-        String formKey = (String) formData.get("formKey");
-        log.info("创建表单数据 - formKey: {}", formKey);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", System.currentTimeMillis());
-        result.put("dataStatus", "DRAFT");
-        return Result.ok("保存成功", result);
+    public Result<FormData> createFormData(@RequestBody FormData formData) {
+        formData.setDataStatus("DRAFT");
+        formDataService.save(formData);
+        return Result.ok("保存成功", formData);
     }
 
     @PutMapping("/data/{id}")
-    public Result<Void> updateFormData(@PathVariable Long id, @RequestBody Map<String, Object> formData) {
-        log.info("更新表单数据 - ID: {}", id);
+    public Result<Void> updateFormData(@PathVariable Long id, @RequestBody FormData formData) {
+        formData.setId(id);
+        formDataService.updateById(formData);
         return Result.okMsg("更新成功");
     }
 
     @PutMapping("/data/{id}/submit")
     public Result<Void> submitFormData(@PathVariable Long id) {
-        log.info("提交表单数据 - ID: {}", id);
+        FormData data = formDataService.getById(id);
+        if (data == null) return Result.fail(ResultCode.NOT_FOUND, "表单数据不存在");
+        data.setDataStatus("SUBMITTED");
+        data.setSubmitTime(java.time.LocalDateTime.now());
+        formDataService.updateById(data);
         return Result.okMsg("提交成功");
     }
 
+    @PreAuthorize("hasAuthority('form:data:delete')")
     @DeleteMapping("/data/{id}")
     public Result<Void> deleteFormData(@PathVariable Long id) {
-        log.info("删除表单数据 - ID: {}", id);
+        formDataService.removeById(id);
         return Result.okMsg("删除成功");
-    }
-
-    // ==================== 字段模板管理 ====================
-
-    @GetMapping("/template/list")
-    public Result<Map<String, List<Map<String, Object>>>> queryTemplateList() {
-        return Result.ok(Collections.emptyMap());
-    }
-
-    @GetMapping("/template/type/{fieldType}")
-    public Result<List<Map<String, Object>>> queryTemplateByType(@PathVariable String fieldType) {
-        return Result.ok(Collections.emptyList());
     }
 }

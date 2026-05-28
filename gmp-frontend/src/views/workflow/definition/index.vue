@@ -13,8 +13,11 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await getDefinitionList({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value })
-    list.value = res.data.records || []
-    total.value = res.data.total || 0
+    list.value = res.data?.records || []
+    total.value = res.data?.total || 0
+  } catch (e) {
+    list.value = []
+    total.value = 0
   } finally { loading.value = false }
 }
 
@@ -69,7 +72,7 @@ onMounted(fetchData)
       </el-table>
 
       <div style="display:flex;justify-content:flex-end;margin-top:16px">
-        <el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :total="total" layout="total,prev,pager,next" @change="fetchData" />
+        <el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :total="total" layout="total,prev,pager,next" @current-change="fetchData" @size-change="pageSize=$event;pageNum=1;fetchData()" />
       </div>
     </el-card>
   </div>

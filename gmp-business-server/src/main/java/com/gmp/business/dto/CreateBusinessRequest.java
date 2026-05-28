@@ -25,12 +25,10 @@ public class CreateBusinessRequest implements Serializable {
     @NotBlank(message = "业务标题不能为空")
     private String title;
 
-    /** 关联表单定义 Key */
-    @NotBlank(message = "表单Key不能为空")
+    /** 关联表单定义 Key（非表单业务可为空） */
     private String formKey;
 
-    /** 表单填写数据 */
-    @NotNull(message = "表单数据不能为空")
+    /** 表单填写数据（非表单业务可为空） */
     private Map<String, Object> formData;
 
     /** 紧急程度: NORMAL / URGENT / CRITICAL */
@@ -47,4 +45,10 @@ public class CreateBusinessRequest implements Serializable {
 
     /** 标签列表 */
     private List<String> tags;
+
+    /** 业务摘要/描述 */
+    private String summary;
+
+    /** 操作原因（作废原因/驳回原因等） */
+    private String reason;
 }

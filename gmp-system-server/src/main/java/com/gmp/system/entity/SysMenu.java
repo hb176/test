@@ -20,4 +20,5 @@ public class SysMenu extends CommonEntity {
     private Integer sortOrder;
     private Integer visible;
     private Boolean isExternal;
+    private String formKey;
 }

@@ -40,7 +40,15 @@ async function selectRole(row: any) {
 async function saveRole() {
   const r = selectedRole.value
   if (!r) return
-  await updateRole(r.id, { roleCode: r.roleCode, roleName: r.roleName, roleLevel: r.roleLevel, status: r.status, description: r.description, deptIds: selectedDeptIds.value.join(',') })
+  await updateRole(r.id, {
+    roleCode: r.roleCode,
+    roleName: r.roleName,
+    roleLevel: r.roleLevel,
+    status: r.status,
+    description: r.description,
+    dataScope: r.dataScope,
+    deptIds: r.dataScope === 'CUSTOM' ? selectedDeptIds.value.join(',') : ''
+  })
   ElMessage.success('已保存')
 }
 
@@ -109,7 +117,12 @@ onMounted(fetch)
       <div class="role-list-wrap">
         <div v-for="item in list" :key="item.id" class="role-item" :class="{ active: selectedRole?.id === item.id }" @click="selectRole(item)">
           <div class="role-item-info"><span class="role-name">{{ item.roleName }}</span><el-tag :type="item.status===1?'success':'danger'" size="small">{{ item.status===1?'启用':'禁用' }}</el-tag></div>
-          <div class="role-code">{{ item.roleCode }}</div>
+          <div class="role-item-bottom">
+            <span class="role-code">{{ item.roleCode }}</span>
+            <el-tag v-if="item.dataScope" size="small" type="info" effect="plain">
+              {{ ({ ALL: '全部', DEPT: '本部门', DEPT_AND_CHILDREN: '部门+子', SELF: '本人', CUSTOM: '自定义' } as Record<string,string>)[item.dataScope] || item.dataScope }}
+            </el-tag>
+          </div>
         </div>
         <el-empty v-if="!loading && list.length===0" description="暂无角色" />
       </div>
@@ -126,10 +139,16 @@ onMounted(fetch)
           <el-form-item label="显示顺序"><el-input-number v-model="selectedRole.roleLevel" :min="0" controls-position="right" style="width:100%" /></el-form-item>
           <el-form-item label="状态"><el-switch v-model="selectedRole.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></el-form-item>
           <el-form-item label="数据权限">
-            <el-select v-model="selectedRole.dataScope" style="width:100%"><el-option label="全部数据" :value="1" /><el-option label="本部门数据" :value="2" /><el-option label="本部门及以下" :value="3" /><el-option label="仅本人数据" :value="4" /></el-select>
+            <el-select v-model="selectedRole.dataScope" style="width:100%">
+              <el-option label="全部数据" value="ALL" />
+              <el-option label="本部门数据" value="DEPT" />
+              <el-option label="本部门及子部门" value="DEPT_AND_CHILDREN" />
+              <el-option label="仅本人数据" value="SELF" />
+              <el-option label="自定义部门" value="CUSTOM" />
+            </el-select>
           </el-form-item>
-          <el-form-item label="所属部门" v-if="selectedRole.dataScope === 1">
-            <el-select v-model="selectedDeptIds" multiple placeholder="选择部门" style="width:100%"><el-option v-for="d in deptList" :key="d.id" :label="d.deptName" :value="d.id" /></el-select>
+          <el-form-item label="限定部门" v-if="selectedRole.dataScope === 'CUSTOM'">
+            <el-select v-model="selectedDeptIds" multiple placeholder="选择可见部门" style="width:100%"><el-option v-for="d in deptList" :key="d.id" :label="d.deptName" :value="d.id" /></el-select>
           </el-form-item>
           <el-form-item label="备注"><el-input v-model="selectedRole.description" type="textarea" :rows="2" /></el-form-item>
         </el-form>
@@ -184,6 +203,7 @@ onMounted(fetch)
 .role-item:hover { background: #f0f5ff; }
 .role-item.active { background: #e6f0ff; border-left: 3px solid #409EFF; padding-left: 13px; }
 .role-item-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.role-item-bottom { display: flex; align-items: center; justify-content: space-between; }
 .role-name { font-weight: 500; color: #303133; }
 .role-code { font-size: 12px; color: #909399; }
 

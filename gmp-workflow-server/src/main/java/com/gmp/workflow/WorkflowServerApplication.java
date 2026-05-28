@@ -31,7 +31,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableCaching
 @SpringBootApplication(scanBasePackages = {"com.gmp.workflow", "com.gmp.framework", "com.gmp.common"})
 @EnableDiscoveryClient
-@EnableFeignClients
+@EnableFeignClients(basePackages = "com.gmp.workflow.feign")
 @MapperScan("com.gmp.workflow.mapper")
 public class WorkflowServerApplication {
     public static void main(String[] args) {

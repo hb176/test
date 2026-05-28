@@ -75,6 +75,47 @@ public class JwtUtils {
     }
 
     /**
+     * 生成访问Token (Access Token)，包含部门ID
+     *
+     * @param userId        用户ID
+     * @param username      用户名
+     * @param roles         用户角色列表（逗号分隔）
+     * @param deptId        部门ID
+     * @param expireSeconds Token有效秒数
+     * @return JWT Token字符串
+     */
+    public static String createAccessToken(Long userId, String username, String roles, Long deptId, long expireSeconds) {
+        return createAccessToken(userId, username, roles, deptId, null, expireSeconds);
+    }
+
+    /**
+     * 生成访问Token，包含权限标识
+     */
+    public static String createAccessToken(Long userId, String username, String roles,
+                                            Long deptId, String permissions, long expireSeconds) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("username", username);
+        claims.put("roles", roles);
+        claims.put("deptId", deptId);
+        claims.put("type", "access");
+        if (permissions != null) claims.put("permissions", permissions);
+
+        Date now = new Date();
+        Date expiration = new Date(now.getTime() + expireSeconds * 1000);
+
+        return Jwts.builder()
+                .claims(claims)
+                .issuer(ISSUER)
+                .subject(username)
+                .issuedAt(now)
+                .expiration(expiration)
+                .id(String.valueOf(userId))
+                .signWith(SECRET_KEY)
+                .compact();
+    }
+
+    /**
      * 生成刷新Token (Refresh Token) - 有效期更长
      *
      * @param userId   用户ID

@@ -1,0 +1,121 @@
+:root {
+  --gmp-bg: #f4f7fb;
+  --gmp-surface: #ffffff;
+  --gmp-surface-soft: #f8fafc;
+  --gmp-border: #e4e9f2;
+  --gmp-border-strong: #d7deea;
+  --gmp-text: #1f2a37;
+  --gmp-text-muted: #64748b;
+  --gmp-primary: #1f6feb;
+  --gmp-primary-dark: #174ea6;
+  --gmp-success: #16a34a;
+  --gmp-warning: #d97706;
+  --gmp-danger: #dc2626;
+  --gmp-radius: 8px;
+  --gmp-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
+  --gmp-shadow-soft: 0 4px 14px rgba(31, 41, 55, 0.06);
+}
+
+body {
+  color: var(--gmp-text);
+  background: var(--gmp-bg);
+}
+
+.gmp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gmp-card,
+.gmp-panel {
+  background: var(--gmp-surface);
+  border: 1px solid var(--gmp-border);
+  border-radius: var(--gmp-radius);
+  box-shadow: var(--gmp-shadow-soft);
+}
+
+.gmp-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.gmp-section-title {
+  margin: 0;
+  color: var(--gmp-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.gmp-section-subtitle {
+  margin: 4px 0 0;
+  color: var(--gmp-text-muted);
+  font-size: 13px;
+}
+
+.gmp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.gmp-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.gmp-table-card .el-card__body {
+  padding: 18px;
+}
+
+.gmp-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.el-card {
+  border-color: var(--gmp-border);
+  border-radius: var(--gmp-radius);
+}
+
+.el-button {
+  border-radius: 6px;
+}
+
+.el-table {
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-border-color: var(--gmp-border);
+  color: var(--gmp-text);
+  border-radius: 6px;
+}
+
+.el-table th.el-table__cell {
+  color: #475569;
+  font-weight: 700;
+}
+
+.el-dialog {
+  border-radius: var(--gmp-radius);
+}
+
+@media (max-width: 960px) {
+  .gmp-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .gmp-filter-row {
+    width: 100%;
+  }
+}

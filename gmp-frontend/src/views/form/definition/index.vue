@@ -22,12 +22,12 @@ onMounted(fetchData)
         <el-button type="primary" @click="router.push('/form/designer')">新建表单</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="formName" label="表单名称" min-width="180" />
-        <el-table-column prop="formKey" label="表单Key" width="160" />
+        <el-table-column prop="name" label="表单名称" min-width="180" />
+        <el-table-column prop="code" label="表单Key" width="160" />
         <el-table-column prop="version" label="版本" width="60" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'PUBLISHED' ? 'success' : row.status === 'ARCHIVED' ? 'info' : ''">{{ row.status === 'PUBLISHED' ? '已发布' : row.status === 'ARCHIVED' ? '已归档' : '草稿' }}</el-tag>
+            <el-tag :type="row.status === 'PUBLISHED' ? 'success' : row.status === 'ARCHIVED' ? 'info' : 'primary'">{{ row.status === 'PUBLISHED' ? '已发布' : row.status === 'ARCHIVED' ? '已归档' : '草稿' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="workflowKey" label="绑定流程" width="150" />

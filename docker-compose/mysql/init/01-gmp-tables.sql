@@ -1,12 +1,25 @@
 -- ============================================================
--- GMP System - 全部数据库表创建脚本
+-- GMP System - 数据库初始化脚本 (Database Initialization)
 -- MySQL 8.0+, 字符集 utf8mb4
+-- ============================================================
+-- 表分类 (Table Categories):
+--   [Platform]   sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role
+--                sys_dept / sys_config / sys_dict / sys_oper_log
+--   [Business]   business_record / form_definition / form_data / form_field_template
+--                file_info
+--   [Workflow]   wf_process_definition_ext / wf_process_instance_ext / wf_task_ext
+--                tbl_flow_listener / tbl_flow_listener_param / wf_activity_form_field
+--   [Audit]      tbl_sys_oper_record
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS gmp_system DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS nacos_config DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE gmp_system;
+
+-- ================================================================
+-- Platform Tables (平台基础表)
+-- ================================================================
 
 -- ==================== 1. sys_user (用户) ====================
 CREATE TABLE IF NOT EXISTS sys_user (
@@ -63,6 +76,7 @@ CREATE TABLE IF NOT EXISTS sys_role (
     role_name       VARCHAR(128)    NULL     COMMENT '角色名称',
     description     VARCHAR(256)    NULL     COMMENT '角色描述',
     role_level      INT             NULL     COMMENT '角色级别',
+    data_scope      VARCHAR(32)     NULL     DEFAULT 'ALL' COMMENT '数据权限(ALL/DEPT/DEPT_AND_CHILDREN/SELF/CUSTOM)',
     status          INT             NULL     DEFAULT 1 COMMENT '状态(1=启用,0=禁用)',
     is_system       TINYINT(1)      NULL     DEFAULT 0 COMMENT '是否系统内置',
     PRIMARY KEY (id),
@@ -88,6 +102,7 @@ CREATE TABLE IF NOT EXISTS sys_menu (
     sort_order      INT             NULL     COMMENT '排序',
     visible         INT             NULL     DEFAULT 1 COMMENT '是否可见(1=是,0=否)',
     is_external     TINYINT(1)      NULL     DEFAULT 0 COMMENT '是否外链',
+    form_key        VARCHAR(128)    NULL     COMMENT '绑定表单Key(form_definition.code)',
     PRIMARY KEY (id),
     KEY idx_parent_id (parent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统菜单';
@@ -179,6 +194,10 @@ CREATE TABLE IF NOT EXISTS sys_oper_log (
     KEY idx_create_time (create_time),
     KEY idx_oper_type (oper_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志';
+
+-- ================================================================
+-- Business Tables (业务表)
+-- ================================================================
 
 -- ==================== 7. business_record (业务记录) ====================
 CREATE TABLE IF NOT EXISTS business_record (
@@ -388,6 +407,10 @@ CREATE TABLE IF NOT EXISTS file_info (
     KEY idx_file_type (file_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件信息';
 
+-- ================================================================
+-- Workflow Tables (流程引擎表)
+-- ================================================================
+
 -- ==================== 12. wf_process_definition_ext (流程定义扩展) ====================
 CREATE TABLE IF NOT EXISTS wf_process_definition_ext (
     id                      BIGINT          NOT NULL,
@@ -496,6 +519,10 @@ CREATE TABLE IF NOT EXISTS wf_task_ext (
     KEY idx_process_instance_ext_id (process_instance_ext_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程任务扩展';
 
+-- ================================================================
+-- Audit & Extended Tables (审计及扩展表)
+-- ================================================================
+
 -- ==================== 15. tbl_sys_oper_record (操作记录-独立主键) ====================
 CREATE TABLE IF NOT EXISTS tbl_sys_oper_record (
     id              VARCHAR(64)     NOT NULL COMMENT 'UUID主键',
@@ -514,7 +541,192 @@ CREATE TABLE IF NOT EXISTS tbl_sys_oper_record (
     KEY idx_date_time (date_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作记录';
 
--- ==================== 初始数据 ====================
+-- ==================== 16. tbl_flow_listener (流程监听器) ====================
+CREATE TABLE IF NOT EXISTS tbl_flow_listener (
+    id              VARCHAR(64)     NOT NULL COMMENT 'UUID主键',
+    name            VARCHAR(128)    NULL     COMMENT '监听器名称',
+    listener_type   VARCHAR(32)     NULL     COMMENT '监听器类型(execution/task)',
+    event_type      VARCHAR(32)     NULL     COMMENT '事件类型(create/assignment/complete/delete/take)',
+    value           VARCHAR(512)    NULL     COMMENT '实现类全限定名或Spring Bean名称',
+    remark          VARCHAR(512)    NULL     COMMENT '备注说明',
+    order_no        INT             NULL     DEFAULT 0 COMMENT '排序号',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    creator         VARCHAR(64)     NULL     COMMENT '创建人',
+    update_time     DATETIME        NULL     COMMENT '更新时间',
+    updator         VARCHAR(64)     NULL     COMMENT '更新人',
+    del_flag        TINYINT         NOT NULL DEFAULT 1 COMMENT '删除标识(1=正常,0=已删)',
+    PRIMARY KEY (id),
+    KEY idx_listener_type (listener_type),
+    KEY idx_del_flag (del_flag)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程监听器';
+
+-- ==================== 17. tbl_flow_listener_param (监听器参数) ====================
+CREATE TABLE IF NOT EXISTS tbl_flow_listener_param (
+    id              VARCHAR(64)     NOT NULL COMMENT 'UUID主键',
+    listener_id     VARCHAR(64)     NOT NULL COMMENT '所属监听器ID',
+    name            VARCHAR(128)    NULL     COMMENT '参数名称',
+    value           VARCHAR(512)    NULL     COMMENT '参数值',
+    remark          VARCHAR(512)    NULL     COMMENT '备注说明',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    creator         VARCHAR(64)     NULL     COMMENT '创建人',
+    update_time     DATETIME        NULL     COMMENT '更新时间',
+    updator         VARCHAR(64)     NULL     COMMENT '更新人',
+    del_flag        TINYINT         NOT NULL DEFAULT 1 COMMENT '删除标识(1=正常,0=已删)',
+    PRIMARY KEY (id),
+    KEY idx_listener_id (listener_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程监听器参数';
+
+-- ==================== 18. wf_activity_form_field (节点表单字段权限) ====================
+CREATE TABLE IF NOT EXISTS wf_activity_form_field (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted         TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    create_by       BIGINT          NULL     COMMENT '创建人ID',
+    update_time     DATETIME        NULL     COMMENT '更新时间',
+    update_by       BIGINT          NULL     COMMENT '更新人ID',
+    process_key     VARCHAR(128)    NOT NULL COMMENT '流程Key',
+    activity_id     VARCHAR(128)    NOT NULL COMMENT '节点ID(BPMN activity id)',
+    field_key       VARCHAR(128)    NOT NULL COMMENT '表单字段Key',
+    field_name      VARCHAR(256)    NULL     COMMENT '字段名称(冗余)',
+    readonly_flag   TINYINT(1)      NULL     DEFAULT 0 COMMENT '是否只读(1=是,0=否)',
+    hidden_flag     TINYINT(1)      NULL     DEFAULT 0 COMMENT '是否隐藏(1=是,0=否)',
+    required_flag   TINYINT(1)      NULL     DEFAULT 0 COMMENT '是否必填(1=是,0=否)',
+    sort_order      INT             NULL     DEFAULT 0 COMMENT '排序号',
+    PRIMARY KEY (id),
+    KEY idx_process_activity (process_key, activity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点表单字段权限';
+
+-- ==================== 19. sys_message (站内信) ====================
+CREATE TABLE IF NOT EXISTS sys_message (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted         TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    create_by       BIGINT          NULL     COMMENT '创建人ID',
+    update_time     DATETIME        NULL     COMMENT '更新时间',
+    update_by       BIGINT          NULL     COMMENT '更新人ID',
+    version         INT             NULL     DEFAULT 0 COMMENT '乐观锁版本号',
+    title           VARCHAR(256)    NOT NULL COMMENT '消息标题',
+    content         TEXT            NULL     COMMENT '消息内容',
+    msg_type        VARCHAR(32)     NULL     DEFAULT 'NOTIFICATION' COMMENT '消息类型(SYSTEM/NOTIFICATION/WARNING/APPROVAL)',
+    sender_id       BIGINT          NULL     COMMENT '发送人ID(系统消息为0)',
+    sender_name     VARCHAR(128)    NULL     COMMENT '发送人名称',
+    receiver_id     BIGINT          NOT NULL COMMENT '接收人ID',
+    receiver_name   VARCHAR(128)    NULL     COMMENT '接收人名称',
+    read_flag       TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '是否已读(0=未读,1=已读)',
+    read_time       DATETIME        NULL     COMMENT '阅读时间',
+    business_type   VARCHAR(32)     NULL     COMMENT '关联业务类型',
+    business_id     BIGINT          NULL     COMMENT '关联业务ID',
+    PRIMARY KEY (id),
+    KEY idx_receiver_read (receiver_id, read_flag),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内信';
+
+-- ==================== 20. sys_message_template (消息模板) ====================
+CREATE TABLE IF NOT EXISTS sys_message_template (
+    id               BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted          TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time      DATETIME        NULL     COMMENT '创建时间',
+    create_by        BIGINT          NULL     COMMENT '创建人ID',
+    update_time      DATETIME        NULL     COMMENT '更新时间',
+    update_by        BIGINT          NULL     COMMENT '更新人ID',
+    version          INT             NULL     DEFAULT 0 COMMENT '乐观锁版本号',
+    template_code    VARCHAR(128)    NOT NULL COMMENT '模板编码',
+    template_name    VARCHAR(256)    NOT NULL COMMENT '模板名称',
+    title_template   VARCHAR(512)    NULL     COMMENT '标题模板',
+    content_template TEXT            NULL     COMMENT '内容模板',
+    msg_type         VARCHAR(32)     NULL     DEFAULT 'INTERNAL' COMMENT '消息类型(INTERNAL/EMAIL/SMS/FEISHU/WEIXIN)',
+    sys_module       VARCHAR(32)     NULL     COMMENT '所属模块(HCP/DMS/TMS/QMS)',
+    enabled          TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '启用状态(1=启用,0=禁用)',
+    description      VARCHAR(512)    NULL     COMMENT '描述',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_template_code (template_code),
+    KEY idx_module (sys_module)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息模板';
+
+-- ==================== 21. sys_scheduled_task (定时任务定义) ====================
+CREATE TABLE IF NOT EXISTS sys_scheduled_task (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted         TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    create_by       BIGINT          NULL     COMMENT '创建人ID',
+    update_time     DATETIME        NULL     COMMENT '更新时间',
+    update_by       BIGINT          NULL     COMMENT '更新人ID',
+    version         INT             NULL     DEFAULT 0 COMMENT '乐观锁版本号',
+    task_code       VARCHAR(128)    NOT NULL COMMENT '任务编码',
+    task_name       VARCHAR(256)    NOT NULL COMMENT '任务名称',
+    cron_expression VARCHAR(64)     NOT NULL COMMENT 'Cron表达式(如0 0 8 * * ?)',
+    bean_name       VARCHAR(256)    NULL     COMMENT 'Spring Bean名称(动态调用)',
+    method_name     VARCHAR(128)    NULL     COMMENT '方法名称',
+    sys_module      VARCHAR(32)     NULL     COMMENT '所属模块(HCP/DMS/TMS)',
+    description     VARCHAR(512)    NULL     COMMENT '任务描述',
+    status          TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '状态(1=启用,0=禁用)',
+    last_exec_time  DATETIME        NULL     COMMENT '最后执行时间',
+    next_exec_time  DATETIME        NULL     COMMENT '下次执行时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_task_code (task_code),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定时任务定义';
+
+-- ==================== 22. sys_scheduled_task_log (定时任务执行日志) ====================
+CREATE TABLE IF NOT EXISTS sys_scheduled_task_log (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    task_id         BIGINT          NOT NULL COMMENT '任务ID',
+    task_code       VARCHAR(128)    NULL     COMMENT '任务编码(冗余)',
+    start_time      DATETIME        NOT NULL COMMENT '开始时间',
+    end_time        DATETIME        NULL     COMMENT '结束时间',
+    cost_ms         BIGINT          NULL     COMMENT '耗时(毫秒)',
+    result          VARCHAR(16)     NOT NULL COMMENT '执行结果(SUCCESS/FAIL)',
+    error_msg       TEXT            NULL     COMMENT '错误信息',
+    create_time     DATETIME        NULL     COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_task_id (task_id),
+    KEY idx_start_time (start_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定时任务执行日志';
+
+CREATE TABLE IF NOT EXISTS sys_signature (
+    id                   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted              TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time          DATETIME     NULL     COMMENT '创建时间',
+    create_by            BIGINT       NULL     COMMENT '创建人ID',
+    update_time          DATETIME     NULL     COMMENT '修改时间',
+    update_by            BIGINT       NULL     COMMENT '修改人ID',
+    version              INT          NOT NULL DEFAULT 0 COMMENT '乐观锁',
+    process_instance_id  VARCHAR(128) NULL     COMMENT '流程实例ID',
+    task_id              VARCHAR(128) NOT NULL COMMENT '任务ID',
+    user_id              BIGINT       NOT NULL COMMENT '签名人ID',
+    user_name            VARCHAR(64)  NULL     COMMENT '签名人姓名',
+    signature_data       MEDIUMTEXT   NOT NULL COMMENT '签名数据(Base64 PNG)',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_task_id (task_id),
+    KEY idx_process_instance (process_instance_id),
+    KEY idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='电子签名';
+
+CREATE TABLE IF NOT EXISTS tms_assignment (
+    id           BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键(自增)',
+    deleted      TINYINT     NOT NULL DEFAULT 0 COMMENT '逻辑删除(0=正常,1=已删)',
+    create_time  DATETIME    NULL     COMMENT '创建时间',
+    create_by    BIGINT      NULL     COMMENT '创建人ID',
+    update_time  DATETIME    NULL     COMMENT '修改时间',
+    update_by    BIGINT      NULL     COMMENT '修改人ID',
+    version      INT         NOT NULL DEFAULT 0 COMMENT '乐观锁',
+    course_id    BIGINT      NOT NULL COMMENT '课程ID',
+    user_id      BIGINT      NOT NULL COMMENT '学员ID',
+    user_name    VARCHAR(64) NULL     COMMENT '学员姓名',
+    status       VARCHAR(20) NOT NULL DEFAULT 'ASSIGNED' COMMENT '状态(ASSIGNED/IN_PROGRESS/COMPLETED)',
+    score        INT         NULL     COMMENT '培训分数(0-100)',
+    completed_at DATETIME    NULL     COMMENT '完成时间',
+    expiry_date  DATETIME    NULL     COMMENT '有效期截止',
+    remark       VARCHAR(500) NULL    COMMENT '备注',
+    PRIMARY KEY (id),
+    KEY idx_course_id (course_id),
+    KEY idx_user_id (user_id),
+    UNIQUE KEY uk_course_user (course_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='培训任务分配';
+
+-- ================================================================
+-- Seed Data (初始数据)
+-- ================================================================
 
 -- 默认管理员
 INSERT INTO sys_user (id, deleted, create_time, create_by, update_time, update_by, version,
@@ -576,6 +788,9 @@ VALUES
     -- ===== 系统管理 > 操作日志 =====
     (16, 0, NOW(), 1, NOW(), 1, 0, 1, '操作日志', 1, '/system/log', 'system:log:list',   'DocumentChecked',6, 1, 0),
 
+    -- ===== 系统管理 > 系统设置 =====
+    (17, 0, NOW(), 1, NOW(), 1, 0, 1, '系统设置', 1, '/system/settings', 'system:config:list', 'Timer', 7, 1, 0),
+
     -- ===== 质量管理子菜单 =====
     (21, 0, NOW(), 1, NOW(), 1, 0, 2, '偏差管理', 1, '/qms/deviation', 'qms:deviation:list', 'Warning',    1, 1, 0),
     (22, 0, NOW(), 1, NOW(), 1, 0, 2, 'CAPA管理', 1, '/qms/capa',     'qms:capa:list',      'CircleCheck', 2, 1, 0),
@@ -594,6 +809,9 @@ VALUES
 -- 默认角色-菜单(系统管理员拥有全部权限)
 INSERT INTO sys_role_menu (id, role_id, menu_id)
 SELECT id + 900, 1, id FROM sys_menu ON DUPLICATE KEY UPDATE menu_id = menu_id;
+
+-- 默认用户-角色(管理员=角色1)
+INSERT INTO sys_user_role (id, user_id, role_id) VALUES (1, 1, 1);
 
 -- 默认部门
 INSERT INTO sys_dept (id, deleted, create_time, create_by, update_time, update_by, version,
